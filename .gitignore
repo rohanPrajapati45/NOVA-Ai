@@ -1,0 +1,23 @@
+# Dependencies (matches node_modules anywhere in the tree)
+node_modules/
+
+# Environment variables (matches .env anywhere in the tree)
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# Build outputs
+dist/
+build/
+
+# Uploaded files (if stored locally, not S3)
+uploads/
+
+# OS/editor junk
+.DS_Store
+.vscode/
+*.swp
