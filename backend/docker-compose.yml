@@ -1,0 +1,15 @@
+# Docker Compose for local development
+# Currently scoped to Redis only — other services will be added later
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: multiagent-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+
+volumes:
+  redis-data:

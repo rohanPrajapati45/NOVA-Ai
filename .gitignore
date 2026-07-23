@@ -6,6 +6,9 @@ node_modules/
 .env.local
 .env.*.local
 
+# Firebase service account key (NEVER commit this)
+serviceAccountKey.json
+
 # Logs
 *.log
 npm-debug.log*
