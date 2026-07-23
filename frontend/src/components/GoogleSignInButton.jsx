@@ -4,7 +4,7 @@ import { signInWithPopup } from "firebase/auth";
 import { useDispatch } from "react-redux";
 import { auth, googleProvider } from "../utils/firebase";
 import api from "../utils/axios";
-import { setUser } from "../store/authSlice";
+import { setUser } from "../redux/userSlice";
 
 const GoogleSignInButton = () => {
   const dispatch = useDispatch();

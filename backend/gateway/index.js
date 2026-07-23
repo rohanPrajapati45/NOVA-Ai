@@ -3,6 +3,8 @@ import dotenv from "dotenv";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import proxy from "express-http-proxy";
+import { verifySession } from "./middleware/verifySession.js";
+import { createProxyWithAuth } from "./utils/proxyWithHeader.js";
 
 dotenv.config();
 
@@ -12,8 +14,11 @@ const app = express();
 
 // ─── Middleware ──────────────────────────────────────────────────────
 
-// Parse cookies (needed to forward session cookies to services)
+// Parse cookies (needed to forward session cookies to auth service)
 app.use(cookieParser());
+
+// Parse JSON bodies (needed for proxyWithHeader to read req.body)
+app.use(express.json());
 
 // CORS — credentials: true required for session cookies,
 // must use exact origin (not wildcard "*")
@@ -26,8 +31,7 @@ app.use(
 
 // ─── Proxy Routes ───────────────────────────────────────────────────
 
-// Forward /api/auth/* → auth service
-// The proxy strips the /api/auth prefix and forwards the rest.
+// Forward /api/auth/* → auth service (no session check needed — auth handles its own)
 app.use(
   "/api/auth",
   proxy(process.env.AUTH_SERVICE, {
@@ -49,6 +53,14 @@ app.use(
       return headers;
     },
   })
+);
+
+// Forward /api/chat/* → chat service (requires authenticated session)
+// Flow: verifySession reads cookie → sets req.userId → proxyWithAuth forwards with x-user-id header
+app.use(
+  "/api/chat",
+  verifySession,
+  createProxyWithAuth(process.env.CHAT_SERVICE || "http://localhost:8002")
 );
 
 // ─── Start Server ───────────────────────────────────────────────────

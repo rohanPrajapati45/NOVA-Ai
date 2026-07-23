@@ -1,23 +1,27 @@
 import React, { useEffect } from "react";
 import { Routes, Route } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { setUser, clearUser } from "./store/authSlice";
-import api from "./utils/axios";
+import { setUser, clearUser } from "./redux/userSlice";
+import { getCurrentUser } from "./features/getCurrentUser";
 import Home from "./pages/Home";
 
 function App() {
   const dispatch = useDispatch();
-  const { loading } = useSelector((state) => state.auth);
+  const { loading } = useSelector((state) => state.user);
 
   // On mount — check if there's an existing valid session (cookie-based)
   useEffect(() => {
     const checkSession = async () => {
       try {
-        const response = await api.get("/api/auth/me");
-        dispatch(setUser(response.data.user));
-      } catch {
-        // No valid session — user needs to sign in
-        dispatch(clearUser());
+        const userData = await getCurrentUser();
+        if (userData) {
+          dispatch(setUser(userData));
+        } else {
+          dispatch(clearUser());
+        }
+      } catch (error) {
+        console.error("Failed to check auth session on load:", error);
+        dispatch(clearUser()); // safe fallback
       }
     };
 

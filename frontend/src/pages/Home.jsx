@@ -1,12 +1,12 @@
 import React, { useState } from "react";
 import { useSelector, useDispatch } from "react-redux";
-import { clearUser } from "../store/authSlice";
+import { clearUser } from "../redux/userSlice";
 import api from "../utils/axios";
 import GoogleSignInButton from "../components/GoogleSignInButton";
 
 const Home = () => {
   const dispatch = useDispatch();
-  const { user, isAuthenticated } = useSelector((state) => state.auth);
+  const { user, isAuthenticated } = useSelector((state) => state.user);
   const [loggingOut, setLoggingOut] = useState(false);
 
   const handleLogout = async () => {
