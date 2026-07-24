@@ -2,6 +2,9 @@ import { z } from "zod";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { routerModel } from "../config/llmModel.js";
 
+// Valid agent names — reused for both LLM classification and manual override validation
+const VALID_AGENTS = ["chat", "search", "coding", "pdf", "ppt", "image"];
+
 // Zod schema for structured output — forces the LLM to return exactly
 // one of the 6 valid agent names. withStructuredOutput uses tool/function
 // calling under the hood, so the output is validated automatically.
@@ -41,11 +44,14 @@ Your ONLY job is to classify the user's message into exactly ONE of these 6 cate
    Examples: "generate an image of a sunset", "create a picture of a cat wearing a hat",
    "draw a logo for my startup"
 
+CONTINUITY RULE:
+If the previous message in this conversation was handled by a specialized agent (e.g. "search", "coding", etc.) AND the current user message is a short follow-up, correction, or continuation of that same topic (e.g., "try again", "why is this wrong", "what about X instead", "give me the link to the first one") with no new distinct topic, classify it as the SAME agent as before, not "chat", unless the user has clearly moved to an unrelated topic.
+
 Classify the user's message into exactly one category. When in doubt, choose "chat".`;
 
 const routerPrompt = ChatPromptTemplate.fromMessages([
   ["system", ROUTER_SYSTEM_PROMPT],
-  ["human", "{userPrompt}"],
+  ["human", "Previous assistant agent: {lastAgentType}\nUser message: {userPrompt}"],
 ]);
 
 // Create the structured model — enforces output matches the Zod schema
@@ -55,25 +61,58 @@ const structuredRouterModel = routerModel.withStructuredOutput(routerSchema, {
 
 /**
  * Router node for the LangGraph workflow.
- * Classifies the user prompt and sets state.selectedAgent.
+ *
+ * TWO PATHS:
+ * 1. Manual override: if state.agentOverride is a valid agent string,
+ *    skip the LLM call entirely and use the override directly.
+ *    Saves latency/cost when the user already told us which agent to use.
+ * 2. Auto-classify: run the LLM-based classification, passing previous agent context.
  */
 export const routerNode = async (state) => {
   try {
-    const chain = routerPrompt.pipe(structuredRouterModel);
-    const result = await chain.invoke({ userPrompt: state.userPrompt });
+    // ─── Path 1: Manual override from frontend ────────────────────
+    if (state.agentOverride && VALID_AGENTS.includes(state.agentOverride)) {
+      console.log(`[Router] Manual override: "${state.agentOverride}" (skipping LLM classification)`);
+      return { selectedAgent: state.agentOverride };
+    }
 
-    // Validate the result is one of our valid agents
-    const validAgents = ["chat", "search", "coding", "pdf", "ppt", "image"];
-    const selected = validAgents.includes(result.selectedAgent)
-      ? result.selectedAgent
-      : "chat"; // Safe fallback
-
-    if (!validAgents.includes(result.selectedAgent)) {
+    // Warn if an invalid override value was somehow sent
+    if (state.agentOverride && !VALID_AGENTS.includes(state.agentOverride)) {
       console.warn(
-        `Router returned unexpected agent "${result.selectedAgent}", falling back to "chat"`
+        `[Router] Invalid agentOverride "${state.agentOverride}" — falling back to auto-classification`
       );
     }
 
+    // ─── Path 2: Auto-classify via LLM with Continuity Context ─────
+    // Find the last assistant message's agentType in chatHistory
+    let lastAgentType = "none";
+    if (Array.isArray(state.chatHistory)) {
+      for (let i = state.chatHistory.length - 1; i >= 0; i--) {
+        const msg = state.chatHistory[i];
+        if (msg.role === "assistant" && msg.agentType) {
+          lastAgentType = msg.agentType;
+          break;
+        }
+      }
+    }
+
+    const chain = routerPrompt.pipe(structuredRouterModel);
+    const result = await chain.invoke({
+      userPrompt: state.userPrompt,
+      lastAgentType,
+    });
+
+    const selected = VALID_AGENTS.includes(result.selectedAgent)
+      ? result.selectedAgent
+      : "chat"; // Safe fallback
+
+    if (!VALID_AGENTS.includes(result.selectedAgent)) {
+      console.warn(
+        `[Router] LLM returned unexpected agent "${result.selectedAgent}", falling back to "chat"`
+      );
+    }
+
+    console.log(`[Router] Auto-classified: "${selected}"`);
     return { selectedAgent: selected };
   } catch (error) {
     console.error("Router classification failed:", error.message);

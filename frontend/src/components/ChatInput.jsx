@@ -1,6 +1,17 @@
-import React from "react";
+import React, { useState } from "react";
 import { useSelector, useDispatch } from "react-redux";
-import { Send, Paperclip, Mic } from "lucide-react";
+import {
+  Send,
+  Paperclip,
+  Mic,
+  Sparkles,
+  MessageCircle,
+  Globe,
+  Code2,
+  FileText,
+  Presentation,
+  ImageIcon,
+} from "lucide-react";
 import { addMessage, setSending } from "../redux/messageSlice";
 import {
   addConversation,
@@ -10,6 +21,21 @@ import {
 import { sendMessage } from "../features/sendMessage";
 import { createConversation } from "../features/createConversation";
 import { updateConversationTitle } from "../features/updateConversation";
+
+/**
+ * Agent selector pill definitions.
+ * 'auto' maps to null in the payload (router LLM decides).
+ * All others map to their string value.
+ */
+const AGENT_OPTIONS = [
+  { key: "auto", label: "Auto", icon: Sparkles },
+  { key: "chat", label: "Chat", icon: MessageCircle },
+  { key: "search", label: "Search", icon: Globe },
+  { key: "coding", label: "Coding", icon: Code2 },
+  { key: "pdf", label: "PDF", icon: FileText },
+  { key: "ppt", label: "PPT", icon: Presentation },
+  { key: "image", label: "Image", icon: ImageIcon },
+];
 
 /**
  * Generate a clean conversation title from the user's first message.
@@ -22,8 +48,7 @@ const generateTitle = (text) => {
 
   const sliced = cleanText.slice(0, 40);
   const lastSpaceIndex = sliced.lastIndexOf(" ");
-  
-  // Cut at last whole word boundary if available
+
   if (lastSpaceIndex > 0) {
     return sliced.slice(0, lastSpaceIndex) + "…";
   }
@@ -31,18 +56,28 @@ const generateTitle = (text) => {
 };
 
 /**
- * Chat input with textarea, placeholder icons (attachment/voice), and send button.
+ * Chat input with agent selector pills, textarea, and send button.
  *
  * On send:
  * 1. If no activeConversation → auto-create one first
  * 2. Optimistic UI: immediately add user message to Redux + clear input
- * 3. Call agent service → add assistant response on success
+ * 3. Call agent service with selected agent override → add assistant response
  * 4. On failure → add error message as assistant response
+ *
+ * DESIGN DECISION: selectedAgentMode resets to 'auto' after every send.
+ * Manual agent selection is treated as a one-off override, not a sticky preference.
+ * This matches the typical usage pattern where users occasionally want to
+ * force a specific agent but normally want auto-routing.
  */
 const ChatInput = ({ draftMessage, setDraftMessage }) => {
   const dispatch = useDispatch();
-  const { activeConversationId, conversations } = useSelector((state) => state.conversation);
+  const { activeConversationId, conversations } = useSelector(
+    (state) => state.conversation
+  );
   const { sending } = useSelector((state) => state.message);
+
+  // Transient UI state — resets to 'auto' after each send
+  const [selectedAgentMode, setSelectedAgentMode] = useState("auto");
 
   const canSend = draftMessage.trim().length > 0 && !sending;
 
@@ -59,6 +94,7 @@ const ChatInput = ({ draftMessage, setDraftMessage }) => {
         const newConvo = await createConversation();
         dispatch(addConversation(newConvo));
         dispatch(setActiveConversation(newConvo._id));
+        // Use local variable directly — Redux state update is async
         conversationId = newConvo._id;
         isNewConvo = true;
       } catch (err) {
@@ -67,10 +103,20 @@ const ChatInput = ({ draftMessage, setDraftMessage }) => {
       }
     }
 
-    // Check if the current conversation title is still default ("New Conversation")
-    // If it is, we will update it after the assistant responds.
+    // Check if title update is needed (only when title is still default)
+    // Edge case: if user literally types "New Conversation" as their first message,
+    // this will still trigger a title update (to the same string) — acceptable.
     const currentConvo = conversations.find((c) => c._id === conversationId);
-    const isDefaultTitle = isNewConvo || (currentConvo ? currentConvo.title === "New Conversation" : true);
+    const isDefaultTitle =
+      isNewConvo ||
+      (currentConvo ? currentConvo.title === "New Conversation" : true);
+
+    // Capture the agent override before resetting
+    const agentOverride =
+      selectedAgentMode === "auto" ? null : selectedAgentMode;
+
+    // Reset to auto after send (one-off override behavior)
+    setSelectedAgentMode("auto");
 
     // Optimistic UI: show user message immediately
     dispatch(
@@ -90,22 +136,27 @@ const ChatInput = ({ draftMessage, setDraftMessage }) => {
       const result = await sendMessage({
         conversationId,
         userPrompt: messageText,
+        agentOverride,
       });
+
       dispatch(
         addMessage({
           role: "assistant",
           content: result.response,
           createdAt: new Date().toISOString(),
+          // Include search images for immediate rendering (optimistic)
+          searchImages: result.searchImages || [],
         })
       );
 
       // Trigger title update if needed
       if (isDefaultTitle) {
         const generatedTitle = generateTitle(messageText);
-        // Fire patch request asynchronously in the background so it doesn't block
         updateConversationTitle({ conversationId, title: generatedTitle })
           .then(() => {
-            dispatch(updateConvoTitleInStore({ conversationId, title: generatedTitle }));
+            dispatch(
+              updateConvoTitleInStore({ conversationId, title: generatedTitle })
+            );
           })
           .catch((err) => {
             console.error("Failed to update conversation title:", err);
@@ -138,6 +189,53 @@ const ChatInput = ({ draftMessage, setDraftMessage }) => {
       style={{ borderTop: "1px solid var(--border-subtle)" }}
     >
       <div className="max-w-3xl mx-auto">
+        {/* ─── Agent Selector Pills ──────────────────────────────── */}
+        <div
+          className="flex gap-1.5 mb-2 overflow-x-auto"
+          style={{ scrollbarWidth: "none" }}
+        >
+          {AGENT_OPTIONS.map((agent) => {
+            const isActive = selectedAgentMode === agent.key;
+            return (
+              <button
+                key={agent.key}
+                onClick={() => setSelectedAgentMode(agent.key)}
+                className="flex items-center gap-1.5 rounded-full cursor-pointer flex-shrink-0"
+                style={{
+                  padding: "5px 12px",
+                  fontSize: "12px",
+                  fontWeight: 500,
+                  background: isActive ? "var(--accent)" : "transparent",
+                  color: isActive ? "#FFFFFF" : "var(--text-muted)",
+                  border: isActive
+                    ? "1px solid var(--accent)"
+                    : "1px solid var(--border-subtle)",
+                  transition: "all 0.15s ease",
+                  whiteSpace: "nowrap",
+                }}
+                onMouseEnter={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.background = "var(--bg-hover)";
+                    e.currentTarget.style.color = "var(--text-secondary)";
+                    e.currentTarget.style.borderColor = "var(--border-hover)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.background = "transparent";
+                    e.currentTarget.style.color = "var(--text-muted)";
+                    e.currentTarget.style.borderColor = "var(--border-subtle)";
+                  }
+                }}
+              >
+                <agent.icon size={13} />
+                <span>{agent.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* ─── Input Area ────────────────────────────────────────── */}
         <div
           className="flex items-end gap-2 rounded-2xl"
           style={{
@@ -189,16 +287,18 @@ const ChatInput = ({ draftMessage, setDraftMessage }) => {
               padding: "4px 0",
             }}
             onInput={(e) => {
-              // Auto-resize textarea to fit content (up to maxHeight)
               e.target.style.height = "auto";
-              e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
+              e.target.style.height =
+                Math.min(e.target.scrollHeight, 120) + "px";
             }}
             onFocus={(e) => {
               e.target.closest("[style]").style.borderColor = "var(--accent)";
-              e.target.closest("[style]").style.boxShadow = "0 0 0 3px var(--accent-muted)";
+              e.target.closest("[style]").style.boxShadow =
+                "0 0 0 3px var(--accent-muted)";
             }}
             onBlur={(e) => {
-              e.target.closest("[style]").style.borderColor = "var(--border-subtle)";
+              e.target.closest("[style]").style.borderColor =
+                "var(--border-subtle)";
               e.target.closest("[style]").style.boxShadow = "none";
             }}
           />
@@ -238,18 +338,22 @@ const ChatInput = ({ draftMessage, setDraftMessage }) => {
               background: canSend ? "var(--accent)" : "var(--bg-hover)",
               color: canSend ? "#FFFFFF" : "var(--text-muted)",
               border: "none",
-              transition: "background 0.2s, transform 0.1s, opacity 0.2s",
+              transition:
+                "background 0.2s, transform 0.1s, opacity 0.2s",
               opacity: canSend ? 1 : 0.4,
               marginBottom: "2px",
             }}
             onMouseEnter={(e) => {
-              if (canSend) e.currentTarget.style.background = "var(--accent-hover)";
+              if (canSend)
+                e.currentTarget.style.background = "var(--accent-hover)";
             }}
             onMouseLeave={(e) => {
-              if (canSend) e.currentTarget.style.background = "var(--accent)";
+              if (canSend)
+                e.currentTarget.style.background = "var(--accent)";
             }}
             onMouseDown={(e) => {
-              if (canSend) e.currentTarget.style.transform = "scale(0.93)";
+              if (canSend)
+                e.currentTarget.style.transform = "scale(0.93)";
             }}
             onMouseUp={(e) => {
               e.currentTarget.style.transform = "scale(1)";

@@ -33,6 +33,7 @@ export const getConversationHistory = async (conversationId, userId) => {
     const recentHistory = fullHistory.slice(-HISTORY_LIMIT).map((m) => ({
       role: m.role,
       content: m.content,
+      ...(m.agentType ? { agentType: m.agentType } : {}),
     }));
 
     // 4. Hydrate Redis cache for subsequent requests

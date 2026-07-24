@@ -81,7 +81,11 @@ export const hydrateCache = async (conversationId, messagesArray = []) => {
       // Keep only the last 20 messages if larger array provided
       const recentMessages = messagesArray.slice(-HISTORY_LIMIT);
       const serialized = recentMessages.map((m) =>
-        JSON.stringify({ role: m.role, content: m.content })
+        JSON.stringify({
+          role: m.role,
+          content: m.content,
+          ...(m.agentType ? { agentType: m.agentType } : {}),
+        })
       );
 
       await redisClient.rpush(key, ...serialized);
@@ -109,7 +113,11 @@ export const appendMessagesToCache = async (conversationId, newMessagesArray = [
 
     const key = getHistoryKey(conversationId);
     const serialized = newMessagesArray.map((m) =>
-      JSON.stringify({ role: m.role, content: m.content })
+      JSON.stringify({
+        role: m.role,
+        content: m.content,
+        ...(m.agentType ? { agentType: m.agentType } : {}),
+      })
     );
 
     await redisClient.rpush(key, ...serialized);
