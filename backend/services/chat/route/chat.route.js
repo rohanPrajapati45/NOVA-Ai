@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  getUserConversations,
   createConversation,
   updateConversation,
   saveMessage,
@@ -7,6 +8,9 @@ import {
 } from "../controller/chat.controller.js";
 
 const router = Router();
+
+// GET /conversations — list all conversations for the authenticated user
+router.get("/conversations", getUserConversations);
 
 // POST /conversation — create a new conversation
 router.post("/conversation", createConversation);

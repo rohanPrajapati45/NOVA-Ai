@@ -1,3 +1,4 @@
+import "dotenv/config";
 import session from "express-session";
 import connectRedis from "connect-redis";
 import redisClient from "../../shared/redis/redis.js";
@@ -36,6 +37,11 @@ export const verifySession = (req, res, next) => {
   // First, parse the session from the cookie via express-session
   sessionMiddleware(req, res, () => {
     if (!req.session || !req.session.userId) {
+      console.log("🔒 [verifySession] Unauthorized request to:", req.originalUrl);
+      console.log("   - Cookie header:", req.headers.cookie);
+      console.log("   - Parsed cookies:", req.cookies);
+      console.log("   - Session ID:", req.sessionID);
+      console.log("   - Session content:", req.session);
       return res.status(401).json({
         authenticated: false,
         message: "Unauthorized — please sign in",

@@ -40,6 +40,14 @@ export const googleSignIn = async (req, res) => {
     req.session.userId = user._id.toString();
     req.session.loginAt = Date.now();
 
+    // Guarantee session is written to Redis BEFORE sending response back to client
+    await new Promise((resolve, reject) => {
+      req.session.save((err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
     return res.status(200).json({
       message: "Sign-in successful",
       user: {

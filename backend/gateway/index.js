@@ -1,18 +1,21 @@
+import "dotenv/config";
+
 import express from "express";
-import dotenv from "dotenv";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import morgan from "morgan";
 import proxy from "express-http-proxy";
 import { verifySession } from "./middleware/verifySession.js";
 import { createProxyWithAuth } from "./utils/proxyWithHeader.js";
-
-dotenv.config();
 
 const PORT = process.env.PORT || 8000;
 
 const app = express();
 
 // ─── Middleware ──────────────────────────────────────────────────────
+
+// Request logging
+app.use(morgan("dev"));
 
 // Parse cookies (needed to forward session cookies to auth service)
 app.use(cookieParser());

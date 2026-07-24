@@ -3,6 +3,28 @@ import Conversation from "../models/conversation.model.js";
 import Message from "../models/message.model.js";
 
 /**
+ * GET /conversations
+ * Fetch all conversations for the authenticated user, sorted by most recent activity first.
+ * Returns empty array if user has no conversations (not an error).
+ */
+export const getUserConversations = async (req, res) => {
+  try {
+    if (!req.userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const conversations = await Conversation.find({ userId: req.userId })
+      .sort({ lastMessageAt: -1, createdAt: -1 })
+      .select("-__v");
+
+    return res.status(200).json({ conversations });
+  } catch (error) {
+    console.error("getUserConversations error:", error.message);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+/**
  * POST /conversation
  * Create a new conversation for the authenticated user.
  */

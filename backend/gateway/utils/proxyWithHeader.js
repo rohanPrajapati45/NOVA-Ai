@@ -18,7 +18,8 @@ import axios from "axios";
 export const createProxyWithAuth = (targetServiceUrl) => {
   return async (req, res) => {
     try {
-      const url = `${targetServiceUrl}${req.originalUrl.replace(/^\/api\/chat/, "")}`;
+      const path = req.originalUrl.replace(/^\/api\/[^/]+/, "");
+      const url = `${targetServiceUrl}${path}`;
 
       const response = await axios({
         method: req.method,

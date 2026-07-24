@@ -2,6 +2,7 @@
 import "dotenv/config";
 
 import express from "express";
+import morgan from "morgan";
 import connectDB from "./config/db.js";
 import chatRoutes from "./route/chat.route.js";
 import { extractUser } from "./middleware/extractUser.middleware.js";
@@ -11,6 +12,9 @@ const PORT = process.env.PORT || 8002;
 const app = express();
 
 // ─── Middleware ──────────────────────────────────────────────────────
+
+// Request logging
+app.use(morgan("dev"));
 
 // Parse JSON request bodies
 app.use(express.json());

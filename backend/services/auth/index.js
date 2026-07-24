@@ -5,6 +5,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import morgan from "morgan";
 import session from "express-session";
 import connectRedis from "connect-redis";
 import connectDB from "./config/db.js";
@@ -19,6 +20,9 @@ const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 const app = express();
 
 // ─── Middleware ──────────────────────────────────────────────────────
+
+// Request logging
+app.use(morgan("dev"));
 
 // Parse JSON request bodies
 app.use(express.json());
