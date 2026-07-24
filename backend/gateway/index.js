@@ -63,6 +63,14 @@ app.use(
   createProxyWithAuth(process.env.CHAT_SERVICE || "http://localhost:8002")
 );
 
+// Forward /api/agent/* → agent service (requires authenticated session)
+// Same flow: verifySession → proxyWithAuth with x-user-id header
+app.use(
+  "/api/agent",
+  verifySession,
+  createProxyWithAuth(process.env.AGENT_SERVICE || "http://localhost:8003")
+);
+
 // ─── Start Server ───────────────────────────────────────────────────
 
 app.listen(PORT, () => {
