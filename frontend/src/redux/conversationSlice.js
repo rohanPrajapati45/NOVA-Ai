@@ -29,6 +29,13 @@ const conversationSlice = createSlice({
       state.activeConversationId = null;
       state.loading = false;
     },
+    updateConvoTitleInStore(state, action) {
+      const { conversationId, title } = action.payload;
+      const convo = state.conversations.find((c) => c._id === conversationId);
+      if (convo) {
+        convo.title = title;
+      }
+    },
   },
 });
 
@@ -38,6 +45,7 @@ export const {
   setActiveConversation,
   setConversationsLoading,
   resetConversations,
+  updateConvoTitleInStore,
 } = conversationSlice.actions;
 
 export default conversationSlice.reducer;

@@ -5,9 +5,30 @@ import { addMessage, setSending } from "../redux/messageSlice";
 import {
   addConversation,
   setActiveConversation,
+  updateConvoTitleInStore,
 } from "../redux/conversationSlice";
 import { sendMessage } from "../features/sendMessage";
 import { createConversation } from "../features/createConversation";
+import { updateConversationTitle } from "../features/updateConversation";
+
+/**
+ * Generate a clean conversation title from the user's first message.
+ * Collapses spaces, trims, and truncates to a maximum of 40 characters,
+ * cutting at a word boundary if possible.
+ */
+const generateTitle = (text) => {
+  const cleanText = text.trim().replace(/\s+/g, " ");
+  if (cleanText.length <= 40) return cleanText;
+
+  const sliced = cleanText.slice(0, 40);
+  const lastSpaceIndex = sliced.lastIndexOf(" ");
+  
+  // Cut at last whole word boundary if available
+  if (lastSpaceIndex > 0) {
+    return sliced.slice(0, lastSpaceIndex) + "…";
+  }
+  return sliced + "…";
+};
 
 /**
  * Chat input with textarea, placeholder icons (attachment/voice), and send button.
@@ -17,16 +38,10 @@ import { createConversation } from "../features/createConversation";
  * 2. Optimistic UI: immediately add user message to Redux + clear input
  * 3. Call agent service → add assistant response on success
  * 4. On failure → add error message as assistant response
- *
- * Trade-off: We do NOT re-fetch messages from the server after each send.
- * The backend already persists both messages, and optimistic local update
- * gives instant UI feedback. Perfect sync is verified on page refresh
- * (getMessages re-fetches from MongoDB). This avoids an extra network
- * round trip after every message.
  */
 const ChatInput = ({ draftMessage, setDraftMessage }) => {
   const dispatch = useDispatch();
-  const { activeConversationId } = useSelector((state) => state.conversation);
+  const { activeConversationId, conversations } = useSelector((state) => state.conversation);
   const { sending } = useSelector((state) => state.message);
 
   const canSend = draftMessage.trim().length > 0 && !sending;
@@ -36,6 +51,7 @@ const ChatInput = ({ draftMessage, setDraftMessage }) => {
 
     const messageText = draftMessage.trim();
     let conversationId = activeConversationId;
+    let isNewConvo = false;
 
     // Auto-create conversation if user types directly without "New Chat"
     if (!conversationId) {
@@ -44,11 +60,17 @@ const ChatInput = ({ draftMessage, setDraftMessage }) => {
         dispatch(addConversation(newConvo));
         dispatch(setActiveConversation(newConvo._id));
         conversationId = newConvo._id;
+        isNewConvo = true;
       } catch (err) {
         console.error("Failed to create conversation:", err);
         return;
       }
     }
+
+    // Check if the current conversation title is still default ("New Conversation")
+    // If it is, we will update it after the assistant responds.
+    const currentConvo = conversations.find((c) => c._id === conversationId);
+    const isDefaultTitle = isNewConvo || (currentConvo ? currentConvo.title === "New Conversation" : true);
 
     // Optimistic UI: show user message immediately
     dispatch(
@@ -76,13 +98,25 @@ const ChatInput = ({ draftMessage, setDraftMessage }) => {
           createdAt: new Date().toISOString(),
         })
       );
+
+      // Trigger title update if needed
+      if (isDefaultTitle) {
+        const generatedTitle = generateTitle(messageText);
+        // Fire patch request asynchronously in the background so it doesn't block
+        updateConversationTitle({ conversationId, title: generatedTitle })
+          .then(() => {
+            dispatch(updateConvoTitleInStore({ conversationId, title: generatedTitle }));
+          })
+          .catch((err) => {
+            console.error("Failed to update conversation title:", err);
+          });
+      }
     } catch (err) {
       console.error("Agent service error:", err);
       dispatch(
         addMessage({
           role: "assistant",
-          content:
-            "Something went wrong. Please try again.",
+          content: "Something went wrong. Please try again.",
           createdAt: new Date().toISOString(),
         })
       );
