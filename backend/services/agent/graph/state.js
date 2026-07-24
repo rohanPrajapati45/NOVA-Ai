@@ -25,6 +25,12 @@ const AgentState = Annotation.Root({
     default: () => "",
   }),
 
+  /** Recent message history [{role, content}] fetched from Redis/MongoDB */
+  chatHistory: Annotation({
+    reducer: (_, next) => next,
+    default: () => [],
+  }),
+
   /** Set by router node — one of: 'chat', 'search', 'coding', 'pdf', 'ppt', 'image' */
   selectedAgent: Annotation({
     reducer: (_, next) => next,

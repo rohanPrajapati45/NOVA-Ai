@@ -32,7 +32,7 @@ const Home = () => {
     );
   }
 
-  // ─── Unauthenticated: Login view (unchanged) ─────────────────────
+  // ─── Unauthenticated: Login view ─────────────────────────────────
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-gray-100">
       <div className="bg-white rounded-2xl shadow-xl p-10 max-w-sm w-full text-center border border-gray-100 animate-fade-in">
