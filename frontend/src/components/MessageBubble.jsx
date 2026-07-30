@@ -3,7 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { Bot, User, Copy, Check, ImageOff, X } from "lucide-react";
+import { Bot, User, Copy, Check, ImageOff, X, Download } from "lucide-react";
 
 /**
  * CopyButton — overlays top-right of code blocks.
@@ -53,7 +53,8 @@ const CopyButton = ({ text }) => {
 };
 
 /**
- * ImageLightbox — minimal fullscreen overlay for viewing search images.
+ * ImageLightbox — minimal fullscreen overlay for viewing images.
+ * Reused by both SearchImageStrip and GeneratedImageBlock.
  * Click outside or X button to close.
  */
 const ImageLightbox = ({ src, onClose }) => (
@@ -92,7 +93,7 @@ const ImageLightbox = ({ src, onClose }) => (
     </button>
     <img
       src={src}
-      alt="Search result"
+      alt="Generated image"
       onClick={(e) => e.stopPropagation()}
       style={{
         maxWidth: "90vw",
@@ -157,6 +158,183 @@ const SearchImageStrip = ({ images }) => {
             }}
           />
         ))}
+      </div>
+    </>
+  );
+};
+
+/**
+ * GeneratedImageBlock — renders a prominent AI-generated image with
+ * click-to-lightbox and hover-to-download functionality.
+ * Reuses the shared ImageLightbox component.
+ */
+const GeneratedImageBlock = ({ imageUrl }) => {
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = async (e) => {
+    e.stopPropagation(); // Prevent lightbox from opening
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      const response = await fetch(imageUrl, { mode: "cors" });
+      if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `nova-generated-${Date.now()}.jpg`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.warn("Direct blob download failed (CORS or network issue), opening in new tab:", err);
+      // Fallback: Open presigned URL directly in new tab so user can view/save
+      window.open(imageUrl, "_blank", "noopener,noreferrer");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  if (failed) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "8px",
+          padding: "14px 16px",
+          background: "rgba(255,255,255,0.03)",
+          borderRadius: "12px",
+          border: "1px solid var(--border-subtle)",
+          color: "var(--text-muted)",
+          fontSize: "13px",
+          marginTop: "12px",
+          maxWidth: "512px",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <ImageOff size={16} style={{ color: "var(--accent)" }} />
+          <span style={{ fontWeight: 500, color: "var(--text-primary)" }}>
+            Image preview expired
+          </span>
+        </div>
+        <p style={{ margin: 0, fontSize: "12px", lineHeight: "1.5" }}>
+          The secure preview link has timed out. Click below to reload and refresh the image.
+        </p>
+        <button
+          onClick={() => window.location.reload()}
+          style={{
+            alignSelf: "flex-start",
+            marginTop: "4px",
+            padding: "4px 10px",
+            background: "var(--accent-muted)",
+            border: "1px solid var(--border-subtle)",
+            borderRadius: "6px",
+            color: "var(--accent)",
+            fontSize: "12px",
+            cursor: "pointer",
+            fontWeight: 500,
+          }}
+        >
+          Reload Image
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {lightboxOpen && (
+        <ImageLightbox src={imageUrl} onClose={() => setLightboxOpen(false)} />
+      )}
+      <div
+        style={{
+          position: "relative",
+          marginTop: "12px",
+          borderRadius: "12px",
+          overflow: "hidden",
+          border: "1px solid var(--border-subtle)",
+          cursor: "pointer",
+          maxWidth: "512px",
+          transition: "border-color 0.2s, box-shadow 0.3s",
+          ...(hovered
+            ? {
+                borderColor: "var(--accent)",
+                boxShadow: "0 4px 24px rgba(108, 92, 231, 0.2)",
+              }
+            : {}),
+        }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        onClick={() => setLightboxOpen(true)}
+      >
+        <img
+          src={imageUrl}
+          alt="AI-generated image"
+          loading="lazy"
+          onError={() => setFailed(true)}
+          style={{
+            width: "100%",
+            display: "block",
+            borderRadius: "11px",
+          }}
+        />
+        {/* Download overlay — appears on hover */}
+        <div
+          style={{
+            position: "absolute",
+            bottom: "8px",
+            right: "8px",
+            opacity: hovered ? 1 : 0,
+            transition: "opacity 0.2s",
+            pointerEvents: hovered ? "auto" : "none",
+          }}
+        >
+          <button
+            onClick={handleDownload}
+            title="Download image"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "6px 12px",
+              background: "rgba(0,0,0,0.7)",
+              backdropFilter: "blur(8px)",
+              border: "1px solid rgba(255,255,255,0.15)",
+              borderRadius: "8px",
+              color: "#fff",
+              fontSize: "12px",
+              cursor: "pointer",
+              transition: "background 0.2s",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "rgba(108, 92, 231, 0.8)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "rgba(0,0,0,0.7)";
+            }}
+          >
+            <Download size={14} />
+            <span>{downloading ? "Saving…" : "Download"}</span>
+          </button>
+        </div>
+      </div>
+      {/* User-friendly caption below image */}
+      <div
+        style={{
+          marginTop: "6px",
+          fontSize: "11px",
+          color: "var(--text-muted)",
+          display: "flex",
+          alignItems: "center",
+          gap: "4px",
+        }}
+      >
+        <span>✨ Click image to view full size • Hover to save</span>
       </div>
     </>
   );
@@ -509,6 +687,7 @@ const markdownComponents = {
 const MessageBubble = ({ message }) => {
   const isUser = message.role === "user";
   const searchImages = message.searchImages || [];
+  const generatedImageUrl = message.generatedImageUrl || null;
 
   return (
     <div
@@ -566,6 +745,11 @@ const MessageBubble = ({ message }) => {
               {message.content}
             </ReactMarkdown>
           </div>
+
+          {/* AI-generated image — only rendered when image agent produced one */}
+          {generatedImageUrl && (
+            <GeneratedImageBlock imageUrl={generatedImageUrl} />
+          )}
 
           {/* Search result images — only rendered when present */}
           {searchImages.length > 0 && (
