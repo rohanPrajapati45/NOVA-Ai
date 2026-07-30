@@ -12,7 +12,7 @@ import {
   Presentation,
   ImageIcon,
 } from "lucide-react";
-import { addMessage, setSending } from "../redux/messageSlice";
+import { addMessage, setSending, setActiveArtifact } from "../redux/messageSlice";
 import {
   addConversation,
   setActiveConversation,
@@ -146,8 +146,21 @@ const ChatInput = ({ draftMessage, setDraftMessage }) => {
           createdAt: new Date().toISOString(),
           // Include search images for immediate rendering (optimistic)
           searchImages: result.searchImages || [],
+          // Include artifacts
+          artifactTitle: result.artifactTitle || null,
+          artifactFiles: result.artifactFiles || [],
         })
       );
+
+      // Auto-open Artifact panel if a new code artifact was generated
+      if (result.artifactFiles && Array.isArray(result.artifactFiles) && result.artifactFiles.length > 0) {
+        dispatch(
+          setActiveArtifact({
+            title: result.artifactTitle || "Code Artifact",
+            files: result.artifactFiles,
+          })
+        );
+      }
 
       // Trigger title update if needed
       if (isDefaultTitle) {

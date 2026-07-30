@@ -89,6 +89,36 @@ const AgentState = Annotation.Root({
     reducer: (_, next) => next,
     default: () => null,
   }),
+
+  // ─── Coding Agent Fields ────────────────────────────────────────
+
+  /**
+   * Coding intent classification result.
+   * One of: 'code_generation', 'code_review', 'explanation', 'debugging' | null
+   */
+  codingIntent: Annotation({
+    reducer: (_, next) => next,
+    default: () => null,
+  }),
+
+  /**
+   * Generated artifact files for code_generation intent.
+   * Shape: [{ filename: string, language: string, content: string }] | null
+   * null/empty for review/explanation/debugging intents.
+   */
+  artifactFiles: Annotation({
+    reducer: (_, next) => next,
+    default: () => null,
+  }),
+
+  /**
+   * Short project title derived from the user's prompt (e.g. "Calculator App").
+   * Used as the Artifact panel header and stored on the message record.
+   */
+  artifactTitle: Annotation({
+    reducer: (_, next) => next,
+    default: () => null,
+  }),
 });
 
 export default AgentState;

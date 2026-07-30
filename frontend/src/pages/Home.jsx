@@ -1,33 +1,30 @@
-import React, { useState } from "react";
-import { useSelector } from "react-redux";
+import React from "react";
+import { useSelector, useDispatch } from "react-redux";
 import GoogleSignInButton from "../components/GoogleSignInButton";
 import Sidebar from "../components/Sidebar";
 import ChatArea from "../components/ChatArea";
 import Artifacts from "../components/Artifacts";
+import { toggleArtifactPanel } from "../redux/messageSlice";
 
 const Home = () => {
+  const dispatch = useDispatch();
   const { user, isAuthenticated } = useSelector((state) => state.user);
-  // Artifacts panel toggle — transient per-session UI state, not Redux
-  const [isArtifactsOpen, setIsArtifactsOpen] = useState(false);
+  const { activeArtifact, isArtifactPanelOpen } = useSelector((state) => state.message);
 
   // ─── Authenticated: Dashboard layout ──────────────────────────────
   if (isAuthenticated && user) {
     return (
       <div
-        className="flex h-screen overflow-hidden"
+        className="flex h-screen overflow-hidden w-full relative"
         style={{ background: "var(--bg-base)" }}
       >
         <Sidebar />
         <ChatArea
-          isArtifactsOpen={isArtifactsOpen}
-          onToggleArtifacts={() => setIsArtifactsOpen(!isArtifactsOpen)}
+          isArtifactsOpen={isArtifactPanelOpen}
+          onToggleArtifacts={() => dispatch(toggleArtifactPanel())}
         />
-        {/* Artifacts panel — only visible when toggled open, hidden on mobile */}
-        {isArtifactsOpen && (
-          <div className="hidden md:flex">
-            <Artifacts />
-          </div>
-        )}
+        {/* Render Artifacts panel if there is an active artifact */}
+        {activeArtifact && <Artifacts />}
       </div>
     );
   }

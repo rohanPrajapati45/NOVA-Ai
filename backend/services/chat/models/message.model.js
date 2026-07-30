@@ -40,6 +40,28 @@ const messageSchema = new mongoose.Schema(
       ],
       default: [],
     },
+    /**
+     * Short project title for coding artifacts (e.g. "Calculator App").
+     * null for non-code-generation messages.
+     */
+    artifactTitle: {
+      type: String,
+      default: null,
+    },
+    /**
+     * Generated code files for code_generation coding intent.
+     * Shape: [{ filename, language, content }]. Empty for non-coding messages.
+     */
+    artifactFiles: {
+      type: [
+        {
+          filename: { type: String, required: true },
+          language: { type: String, required: true },
+          content: { type: String, required: true },
+        },
+      ],
+      default: [],
+    },
   },
   {
     timestamps: true, // Adds createdAt automatically

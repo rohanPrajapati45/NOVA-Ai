@@ -110,7 +110,7 @@ export const saveMessage = async (req, res) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    const { conversationId, role, content, agentType, searchImages } = req.body;
+    const { conversationId, role, content, agentType, searchImages, artifactTitle, artifactFiles } = req.body;
 
     // Validate required fields
     if (!conversationId) {
@@ -139,7 +139,7 @@ export const saveMessage = async (req, res) => {
       return res.status(403).json({ message: "Forbidden — not your conversation" });
     }
 
-    // Create the message — agentType & searchImages optional
+    // Create the message — agentType, searchImages, artifact fields all optional
     const message = await Message.create({
       conversationId,
       role,
@@ -147,6 +147,10 @@ export const saveMessage = async (req, res) => {
       ...(agentType ? { agentType } : {}),
       ...(searchImages && Array.isArray(searchImages) && searchImages.length > 0
         ? { searchImages }
+        : {}),
+      ...(artifactTitle ? { artifactTitle } : {}),
+      ...(artifactFiles && Array.isArray(artifactFiles) && artifactFiles.length > 0
+        ? { artifactFiles }
         : {}),
     });
 

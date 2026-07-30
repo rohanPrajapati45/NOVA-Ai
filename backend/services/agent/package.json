@@ -11,6 +11,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1098.0",
     "@langchain/core": "^0.3.0",
     "@langchain/google-genai": "^0.2.0",
     "@langchain/groq": "^0.2.0",
@@ -21,6 +22,7 @@
     "express": "^5.2.1",
     "morgan": "^1.11.0",
     "nodemon": "^3.1.14",
+    "openai": "^6.49.0",
     "zod": "^3.23.0"
   }
 }

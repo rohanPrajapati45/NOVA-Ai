@@ -32,16 +32,6 @@ export const searchModel = new ChatGroq({
   temperature: 0.5,
 });
 
-/**
- * Coding model — stronger reasoning for code generation/debugging.
- * Uses the larger 70B model for better code quality.
- */
-export const codingModel = new ChatGroq({
-  apiKey: process.env.GROQ_API_KEY,
-  model: "llama-3.3-70b-versatile",
-  temperature: 0.2, // More deterministic for code
-});
-
 // ─── Gemini Models ──────────────────────────────────────────────────
 
 /**
@@ -63,6 +53,45 @@ export const pptModel = new ChatGoogleGenerativeAI({
   model: "gemini-1.5-flash",
   temperature: 0.5,
 });
+
+// ─── OpenRouter / Coding Model (Temporarily Disabled due to credit limit) ───
+// import OpenAI from "openai";
+// const openRouterClient = new OpenAI({
+//   apiKey: process.env.OPENROUTER_API_KEY,
+//   baseURL: "https://openrouter.ai/api/v1",
+//   defaultHeaders: {
+//     "HTTP-Referer": "http://localhost:5173",
+//     "X-Title": "NOVA AI",
+//   },
+// });
+
+// ─── Groq Coding Model (Option A) ───────────────────────────────────
+
+/**
+ * Coding model — Fast, high-quality reasoning on Groq.
+ * Uses Llama 3.3 70B Versatile for high-performance code generation/review.
+ */
+const groqCodingModel = new ChatGroq({
+  apiKey: process.env.GROQ_API_KEY,
+  model: "llama-3.3-70b-versatile",
+  temperature: 0.2, // Lower temperature for deterministic code structure
+  maxTokens: 2500,  // Standard max tokens for output size
+});
+
+/**
+ * Call the Groq coding model.
+ * @param {Array<{role: string, content: string}>} messages - OpenAI-format messages
+ * @param {boolean} jsonMode - if true, sets response_format to json_object
+ * @returns {Promise<string>} - the assistant's response content
+ */
+export const codingModelCall = async (messages, jsonMode = false) => {
+  // Convert standard OpenAI roles/messages to format accepted by LangChain BaseChatModel
+  const response = await groqCodingModel.invoke(
+    messages,
+    jsonMode ? { response_format: { type: "json_object" } } : {}
+  );
+  return response.content || "";
+};
 
 // ─── Image Model ────────────────────────────────────────────────────
 // NOTE: Image generation requires a dedicated image API (e.g. OpenAI DALL-E,

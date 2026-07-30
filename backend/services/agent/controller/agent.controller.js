@@ -74,6 +74,9 @@ export const handlePrompt = async (req, res) => {
           agentType: result.selectedAgent,
           // Include search images if the search agent produced them
           searchImages: result.searchResults?.images || [],
+          // Include artifact fields if the coding agent produced them
+          artifactTitle: result.artifactTitle || null,
+          artifactFiles: result.artifactFiles || [],
         },
         { headers: { "x-user-id": userId } }
       );
@@ -86,7 +89,13 @@ export const handlePrompt = async (req, res) => {
     if (userMsgSaved && assistantMsgSaved) {
       await appendMessagesToCache(conversationId, [
         { role: "user", content: userPrompt },
-        { role: "assistant", content: result.response, agentType: result.selectedAgent },
+        {
+          role: "assistant",
+          content: result.response,
+          agentType: result.selectedAgent,
+          // Note: Redis cache gets standard format, but we don't store full artifacts in Redis memory
+          // since Mongo remains the source of truth for full message payloads.
+        },
       ]);
     } else {
       console.warn("Skipping Redis cache update due to failed MongoDB persistence");
@@ -100,6 +109,9 @@ export const handlePrompt = async (req, res) => {
       // Include search images in the API response so the frontend can render them
       // immediately (without waiting for a message re-fetch)
       searchImages: result.searchResults?.images || [],
+      // Include artifact fields for immediate UI response mapping
+      artifactTitle: result.artifactTitle || null,
+      artifactFiles: result.artifactFiles || [],
       ...(result.error && { warning: "Partial error occurred: " + result.error }),
     });
   } catch (error) {
