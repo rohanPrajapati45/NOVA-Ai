@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import Conversation from "../models/conversation.model.js";
 import Message from "../models/message.model.js";
+import { getSignedUrlForKey } from "../../../shared/s3/getFromS3.js";
 
 /**
  * GET /conversations
@@ -110,7 +111,7 @@ export const saveMessage = async (req, res) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    const { conversationId, role, content, agentType, searchImages, artifactTitle, artifactFiles } = req.body;
+    const { conversationId, role, content, agentType, searchImages, artifactTitle, artifactFiles, generatedImageKey } = req.body;
 
     // Validate required fields
     if (!conversationId) {
@@ -152,6 +153,7 @@ export const saveMessage = async (req, res) => {
       ...(artifactFiles && Array.isArray(artifactFiles) && artifactFiles.length > 0
         ? { artifactFiles }
         : {}),
+      ...(generatedImageKey ? { generatedImageKey } : {}),
     });
 
     // Update parent conversation's lastMessageAt
@@ -196,7 +198,20 @@ export const getMessagesByConversation = async (req, res) => {
     // Fetch messages sorted by createdAt ascending (natural chat order)
     const messages = await Message.find({ conversationId })
       .sort({ createdAt: 1 })
-      .select("-__v");
+      .select("-__v")
+      .lean(); // Use lean() for plain JS objects we can mutate
+
+    // Generate fresh presigned URLs for any messages with generatedImageKey
+    for (const msg of messages) {
+      if (msg.generatedImageKey) {
+        try {
+          msg.generatedImageUrl = await getSignedUrlForKey(msg.generatedImageKey, 86400);
+        } catch (presignErr) {
+          console.warn(`[Chat] Failed to presign image key "${msg.generatedImageKey}":`, presignErr.message);
+          msg.generatedImageUrl = null;
+        }
+      }
+    }
 
     return res.status(200).json({ messages });
   } catch (error) {

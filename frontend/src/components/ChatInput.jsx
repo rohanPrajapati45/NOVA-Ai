@@ -149,6 +149,8 @@ const ChatInput = ({ draftMessage, setDraftMessage }) => {
           // Include artifacts
           artifactTitle: result.artifactTitle || null,
           artifactFiles: result.artifactFiles || [],
+          // Include generated image presigned URL for immediate display
+          generatedImageUrl: result.generatedImageUrl || null,
         })
       );
 

@@ -16,5 +16,5 @@ export const sendMessage = async ({ conversationId, userPrompt, agentOverride = 
     userPrompt,
     agentOverride,
   });
-  return response.data; // { response, selectedAgent, conversationId, searchImages }
+  return response.data; // { response, selectedAgent, conversationId, searchImages, artifactTitle, artifactFiles, generatedImageUrl }
 };

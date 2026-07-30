@@ -2,6 +2,7 @@ import { agentGraph } from "../graph/graph.js";
 import chatApi from "../utils/axios.js";
 import { getConversationHistory } from "../utils/getMessages.js";
 import { appendMessagesToCache } from "../config/memory.js";
+import { getSignedUrlForKey } from "../../../shared/s3/getFromS3.js";
 
 // Valid agent names for server-side validation of agentOverride
 const VALID_AGENTS = ["chat", "search", "coding", "pdf", "ppt", "image"];
@@ -77,6 +78,8 @@ export const handlePrompt = async (req, res) => {
           // Include artifact fields if the coding agent produced them
           artifactTitle: result.artifactTitle || null,
           artifactFiles: result.artifactFiles || [],
+          // Include generated image key if the image agent produced one
+          generatedImageKey: result.generatedImageKey || null,
         },
         { headers: { "x-user-id": userId } }
       );
@@ -93,15 +96,23 @@ export const handlePrompt = async (req, res) => {
           role: "assistant",
           content: result.response,
           agentType: result.selectedAgent,
-          // Note: Redis cache gets standard format, but we don't store full artifacts in Redis memory
-          // since Mongo remains the source of truth for full message payloads.
         },
       ]);
     } else {
       console.warn("Skipping Redis cache update due to failed MongoDB persistence");
     }
 
-    // ─── 6. Return result to client ───────────────────────────────
+    // ─── 6. Generate presigned URL for immediate display ──────────
+    let generatedImageUrl = null;
+    if (result.generatedImageKey) {
+      try {
+        generatedImageUrl = await getSignedUrlForKey(result.generatedImageKey, 3600);
+      } catch (presignErr) {
+        console.error("Failed to generate presigned URL for image:", presignErr.message);
+      }
+    }
+
+    // ─── 7. Return result to client ───────────────────────────────
     return res.status(200).json({
       response: result.response,
       selectedAgent: result.selectedAgent,
@@ -112,6 +123,8 @@ export const handlePrompt = async (req, res) => {
       // Include artifact fields for immediate UI response mapping
       artifactTitle: result.artifactTitle || null,
       artifactFiles: result.artifactFiles || [],
+      // Include presigned URL for immediate image display (1-hour expiry)
+      generatedImageUrl,
       ...(result.error && { warning: "Partial error occurred: " + result.error }),
     });
   } catch (error) {

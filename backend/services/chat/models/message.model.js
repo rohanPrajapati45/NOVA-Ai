@@ -62,6 +62,15 @@ const messageSchema = new mongoose.Schema(
       ],
       default: [],
     },
+    /**
+     * S3 object key for AI-generated images (from image agent).
+     * NOT a URL — presigned URLs are generated on-demand when messages are fetched.
+     * null for non-image-generation messages.
+     */
+    generatedImageKey: {
+      type: String,
+      default: null,
+    },
   },
   {
     timestamps: true, // Adds createdAt automatically
