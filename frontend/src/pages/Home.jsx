@@ -1,15 +1,18 @@
-import React from "react";
+import React, { useState } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import GoogleSignInButton from "../components/GoogleSignInButton";
 import Sidebar from "../components/Sidebar";
 import ChatArea from "../components/ChatArea";
 import Artifacts from "../components/Artifacts";
+import BillingDrawer from "../components/BillingDrawer";
 import { toggleArtifactPanel } from "../redux/messageSlice";
 
 const Home = () => {
   const dispatch = useDispatch();
   const { user, isAuthenticated } = useSelector((state) => state.user);
   const { activeArtifact, isArtifactPanelOpen } = useSelector((state) => state.message);
+
+  const [isBillingDrawerOpen, setIsBillingDrawerOpen] = useState(false);
 
   // ─── Authenticated: Dashboard layout ──────────────────────────────
   if (isAuthenticated && user) {
@@ -18,13 +21,19 @@ const Home = () => {
         className="flex h-screen overflow-hidden w-full relative"
         style={{ background: "var(--bg-base)" }}
       >
-        <Sidebar />
+        <Sidebar onOpenBilling={() => setIsBillingDrawerOpen(true)} />
         <ChatArea
           isArtifactsOpen={isArtifactPanelOpen}
           onToggleArtifacts={() => dispatch(toggleArtifactPanel())}
         />
         {/* Render Artifacts panel if there is an active artifact */}
         {activeArtifact && <Artifacts />}
+
+        {/* Render Billing & Credits drawer full-screen overlay */}
+        <BillingDrawer
+          isOpen={isBillingDrawerOpen}
+          onClose={() => setIsBillingDrawerOpen(false)}
+        />
       </div>
     );
   }

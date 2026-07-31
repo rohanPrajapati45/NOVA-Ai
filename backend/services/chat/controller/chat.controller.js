@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import Conversation from "../models/conversation.model.js";
 import Message from "../models/message.model.js";
 import { getSignedUrlForKey } from "../../../shared/s3/getFromS3.js";
+import { refreshFileUrlsOnMessages } from "../utils/refreshFileUrls.js";
 
 /**
  * GET /conversations
@@ -201,17 +202,8 @@ export const getMessagesByConversation = async (req, res) => {
       .select("-__v")
       .lean(); // Use lean() for plain JS objects we can mutate
 
-    // Generate fresh presigned URLs for any messages with generatedImageKey
-    for (const msg of messages) {
-      if (msg.generatedImageKey) {
-        try {
-          msg.generatedImageUrl = await getSignedUrlForKey(msg.generatedImageKey, 86400);
-        } catch (presignErr) {
-          console.warn(`[Chat] Failed to presign image key "${msg.generatedImageKey}":`, presignErr.message);
-          msg.generatedImageUrl = null;
-        }
-      }
-    }
+    // Generate fresh presigned URLs for all S3-stored files (images, PDFs, PPTs)
+    await refreshFileUrlsOnMessages(messages);
 
     return res.status(200).json({ messages });
   } catch (error) {

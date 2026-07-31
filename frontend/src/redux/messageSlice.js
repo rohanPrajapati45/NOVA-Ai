@@ -13,7 +13,16 @@ const messageSlice = createSlice({
   initialState,
   reducers: {
     setMessages(state, action) {
-      state.messages = action.payload;
+      const incoming = action.payload || [];
+      // Preserve local optimistic messages (no _id) that haven't landed in DB payload yet
+      const optimisticInFlight = state.messages.filter(
+        (localM) =>
+          !localM._id &&
+          !incoming.some(
+            (incM) => incM.content === localM.content && incM.role === localM.role
+          )
+      );
+      state.messages = [...incoming, ...optimisticInFlight];
       state.loading = false;
     },
     addMessage(state, action) {
@@ -36,6 +45,10 @@ const messageSlice = createSlice({
       state.activeArtifact = action.payload;
       state.isArtifactPanelOpen = true; // Auto-opens on set
     },
+    clearActiveArtifact(state) {
+      state.activeArtifact = null;
+      state.isArtifactPanelOpen = false;
+    },
     closeArtifactPanel(state) {
       state.isArtifactPanelOpen = false;
     },
@@ -52,6 +65,7 @@ export const {
   setSending,
   clearMessages,
   setActiveArtifact,
+  clearActiveArtifact,
   closeArtifactPanel,
   toggleArtifactPanel,
 } = messageSlice.actions;

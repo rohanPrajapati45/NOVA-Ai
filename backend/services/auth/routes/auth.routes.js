@@ -1,15 +1,24 @@
 import { Router } from "express";
-import { googleSignIn, getMe, logout } from "../controllers/auth.controller.js";
+import {
+  googleSignIn,
+  getMe,
+  logout,
+  updatePlanAndCredits,
+  checkCreditsAvailable,
+  deductCredits,
+} from "../controllers/auth.controller.js";
+import { internalAuth } from "../middlewares/internalAuth.middleware.js";
 
 const router = Router();
 
-// POST /google — Firebase Google Sign-In
+// Public / Client auth endpoints (forwarded via Gateway /api/auth/*)
 router.post("/google", googleSignIn);
-
-// GET /me — Check current session
 router.get("/me", getMe);
-
-// POST /logout — Destroy session
 router.post("/logout", logout);
+
+// Internal microservice endpoints (called directly by billing/agent services, NOT via Gateway)
+router.post("/internal/update-plan", internalAuth, updatePlanAndCredits);
+router.post("/internal/check-credits", internalAuth, checkCreditsAvailable);
+router.post("/internal/deduct-credits", internalAuth, deductCredits);
 
 export default router;

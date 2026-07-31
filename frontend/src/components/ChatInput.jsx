@@ -21,6 +21,7 @@ import {
 import { sendMessage } from "../features/sendMessage";
 import { createConversation } from "../features/createConversation";
 import { updateConversationTitle } from "../features/updateConversation";
+import { updateUserCredits } from "../redux/userSlice";
 
 /**
  * Agent selector pill definitions.
@@ -138,6 +139,11 @@ const ChatInput = ({ draftMessage, setDraftMessage }) => {
         userPrompt: messageText,
         agentOverride,
       });
+
+      // Update user credits in Redux store if returned by agent prompt response
+      if (typeof result.remainingCredits === "number") {
+        dispatch(updateUserCredits(result.remainingCredits));
+      }
 
       dispatch(
         addMessage({

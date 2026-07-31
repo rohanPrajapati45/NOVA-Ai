@@ -54,6 +54,18 @@ const getFileIcon = (lang) => {
   return <FileText size={14} className="text-gray-400" />;
 };
 
+/**
+ * Normalizes code content strings: handles literal \n / \t escapes if unescaped
+ * from JSON responses, ensuring clean multi-line code display.
+ */
+const formatCodeContent = (content) => {
+  if (!content || typeof content !== "string") return "";
+  return content
+    .replace(/\\r\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .replace(/\\t/g, "  ");
+};
+
 const Artifacts = () => {
   const dispatch = useDispatch();
   const { activeArtifact, isArtifactPanelOpen } = useSelector(
@@ -330,16 +342,25 @@ const Artifacts = () => {
                         LANGUAGE_MAP[currentFile.language?.toLowerCase()] ||
                         "plaintext"
                       }
-                      value={currentFile.content}
+                      value={formatCodeContent(currentFile.content)}
                       theme="vs-dark"
                       options={{
                         readOnly: true,
                         minimap: { enabled: false },
                         fontSize: 13,
+                        fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace",
+                        lineHeight: 20,
+                        tabSize: 2,
+                        insertSpaces: true,
                         wordWrap: "on",
                         scrollBeyondLastLine: false,
                         automaticLayout: true,
-                        padding: { top: 12 },
+                        folding: true,
+                        renderLineHighlight: "all",
+                        lineNumbersMinChars: 3,
+                        padding: { top: 14, bottom: 14 },
+                        bracketPairColorization: { enabled: true },
+                        guides: { indentation: true, bracketPairs: true },
                       }}
                     />
                     {/* Floating Copy Button */}

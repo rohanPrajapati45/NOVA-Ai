@@ -179,6 +179,14 @@ const AgentState = Annotation.Root({
     reducer: (_, next) => next,
     default: () => null,
   }),
+
+  // ─── Credit System Fields ────────────────────────────────────────
+
+  /** Flag set by creditCheckNode if pre-execution credit check fails */
+  creditCheckFailed: Annotation({
+    reducer: (_, next) => next,
+    default: () => false,
+  }),
 });
 
 export default AgentState;

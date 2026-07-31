@@ -901,6 +901,34 @@ const MessageBubble = ({ message }) => {
             />
           )}
 
+          {/* AI-generated Image display */}
+          {generatedImageUrl && (
+            <div
+              style={{
+                marginTop: "12px",
+                borderRadius: "14px",
+                overflow: "hidden",
+                maxWidth: "420px",
+                border: "1px solid var(--border-subtle)",
+                background: "rgba(0,0,0,0.2)",
+              }}
+            >
+              <img
+                src={generatedImageUrl}
+                alt="AI Generated Art"
+                style={{
+                  width: "100%",
+                  height: "auto",
+                  display: "block",
+                  maxHeight: "420px",
+                  objectFit: "cover",
+                  borderRadius: "12px",
+                }}
+                loading="lazy"
+              />
+            </div>
+          )}
+
           {/* Search result images */}
           {searchImages.length > 0 && (
             <SearchImageStrip images={searchImages} />

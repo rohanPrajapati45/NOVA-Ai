@@ -6,6 +6,7 @@ import {
   SquarePen,
   MessageSquare,
   CreditCard,
+  Coins,
   LogOut,
   MessagesSquare,
 } from "lucide-react";
@@ -55,7 +56,7 @@ const formatDate = (dateStr) => {
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 };
 
-const Sidebar = () => {
+const Sidebar = ({ onOpenBilling }) => {
   const dispatch = useDispatch();
   const { user } = useSelector((state) => state.user);
   const { conversations, activeConversationId, loading } = useSelector(
@@ -66,6 +67,9 @@ const Sidebar = () => {
   const [creatingChat, setCreatingChat] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [imgError, setImgError] = useState(false);
+
+  const userPlan = (user?.plan || "FREE").toUpperCase();
+  const userCredits = typeof user?.credits === "number" ? user.credits : 100;
 
   // ─── Fetch conversations on mount ───────────────────────────────
   useEffect(() => {
@@ -102,9 +106,6 @@ const Sidebar = () => {
   };
 
   // ─── Logout ─────────────────────────────────────────────────────
-  // Defensive: dispatch clearUser + resetConversations even on failure
-  // to avoid getting stuck in a broken state where the session is
-  // partially destroyed but the UI still shows the old user.
   const handleLogout = async () => {
     if (loggingOut) return;
     setLoggingOut(true);
@@ -178,7 +179,7 @@ const Sidebar = () => {
                 letterSpacing: "0.5px",
               }}
             >
-              FREE
+              {userPlan}
             </span>
           </div>
         )}
@@ -401,29 +402,26 @@ const Sidebar = () => {
                 </p>
               </div>
 
-              {/* Billing icon */}
+              {/* Coins / Billing button */}
               <button
-                className="flex items-center justify-center rounded-lg cursor-pointer"
+                onClick={onOpenBilling}
+                className="flex items-center gap-1.5 px-2 py-1 rounded-lg cursor-pointer transition-colors"
                 style={{
-                  width: "28px",
-                  height: "28px",
-                  background: "transparent",
-                  border: "none",
-                  color: "var(--text-muted)",
-                  transition: "background 0.2s, color 0.2s",
+                  background: "var(--accent-muted)",
+                  border: "1px solid var(--border-subtle)",
+                  color: "var(--accent)",
                   flexShrink: 0,
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.background = "var(--bg-hover)";
-                  e.currentTarget.style.color = "var(--text-primary)";
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "transparent";
-                  e.currentTarget.style.color = "var(--text-muted)";
+                  e.currentTarget.style.background = "var(--accent-muted)";
                 }}
-                title="Billing & Plans"
+                title="Billing & Credits"
               >
-                <CreditCard size={14} />
+                <Coins size={14} />
+                <span className="text-xs font-semibold">{userCredits}</span>
               </button>
 
               {/* Logout icon */}
@@ -458,35 +456,53 @@ const Sidebar = () => {
             </div>
           )}
 
-          {/* Collapsed: show logout icon below avatar */}
+          {/* Collapsed: show Coins icon button & logout icon */}
           {isCollapsed && (
-            <button
-              onClick={handleLogout}
-              disabled={loggingOut}
-              className="flex items-center justify-center rounded-lg cursor-pointer"
-              style={{
-                width: "28px",
-                height: "28px",
-                background: "transparent",
-                border: "none",
-                color: "var(--text-muted)",
-                transition: "background 0.2s, color 0.2s",
-                opacity: loggingOut ? 0.5 : 1,
-              }}
-              onMouseEnter={(e) => {
-                if (!loggingOut) {
-                  e.currentTarget.style.background = "rgba(231, 76, 92, 0.1)";
-                  e.currentTarget.style.color = "var(--danger)";
-                }
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "transparent";
-                e.currentTarget.style.color = "var(--text-muted)";
-              }}
-              title="Logout"
-            >
-              <LogOut size={14} />
-            </button>
+            <div className="flex flex-col items-center gap-2">
+              <button
+                onClick={onOpenBilling}
+                className="flex flex-col items-center justify-center rounded-lg cursor-pointer p-1.5 relative"
+                style={{
+                  background: "var(--accent-muted)",
+                  color: "var(--accent)",
+                  border: "none",
+                }}
+                title={`Credits: ${userCredits} — Click to open Billing`}
+              >
+                <Coins size={16} />
+                <span style={{ fontSize: "9px", fontWeight: "700", marginTop: "1px" }}>
+                  {userCredits > 999 ? "999+" : userCredits}
+                </span>
+              </button>
+
+              <button
+                onClick={handleLogout}
+                disabled={loggingOut}
+                className="flex items-center justify-center rounded-lg cursor-pointer"
+                style={{
+                  width: "28px",
+                  height: "28px",
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--text-muted)",
+                  transition: "background 0.2s, color 0.2s",
+                  opacity: loggingOut ? 0.5 : 1,
+                }}
+                onMouseEnter={(e) => {
+                  if (!loggingOut) {
+                    e.currentTarget.style.background = "rgba(231, 76, 92, 0.1)";
+                    e.currentTarget.style.color = "var(--danger)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
+                  e.currentTarget.style.color = "var(--text-muted)";
+                }}
+                title="Logout"
+              >
+                <LogOut size={14} />
+              </button>
+            </div>
           )}
         </div>
       </div>

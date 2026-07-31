@@ -1,6 +1,7 @@
 import { StateGraph, END } from "@langchain/langgraph";
 import AgentState from "./state.js";
 import { routerNode } from "./router.js";
+import { creditCheckNode } from "./creditCheckNode.js";
 import { chatAgent } from "../agents/chat.agent.js";
 import { searchAgent } from "../agents/search.agent.js";
 import { codingAgent } from "../agents/coding.agent.js";
@@ -9,21 +10,20 @@ import { pptAgent } from "../agents/ppt.agent.js";
 import { imageAgent } from "../agents/image.agent.js";
 
 /**
- * Build the multi-agent LangGraph workflow.
+ * Build the multi-agent LangGraph workflow with Credit Check Node.
  *
  * Flow:
- *   __start__ → router → (conditional edge based on selectedAgent)
+ *   __start__ → router → creditCheckNode → (conditional edge)
+ *     ├── creditCheckFailed == true  → END
+ *     └── creditCheckFailed == false → selectedAgent (chatAgent | codingAgent | pdfAgent | pptAgent | imageAgent)
  *
  *   For "search" flow (two-hop):
- *     router → chatAgent → searchAgent → END
- *     (Chat agent reformulates/acknowledges, search agent does retrieval-augmented response)
- *
- *   For all other agents (single-hop):
- *     router → [chatAgent|codingAgent|pdfAgent|pptAgent|imageAgent] → END
+ *     router → creditCheckNode → chatAgent → searchAgent → END
  */
 const workflow = new StateGraph(AgentState)
   // ─── Add nodes ────────────────────────────────────────────────────
   .addNode("router", routerNode)
+  .addNode("creditCheckNode", creditCheckNode)
   .addNode("chatAgent", chatAgent)
   .addNode("searchAgent", searchAgent)
   .addNode("codingAgent", codingAgent)
@@ -33,12 +33,18 @@ const workflow = new StateGraph(AgentState)
 
   // ─── Entry point ──────────────────────────────────────────────────
   .addEdge("__start__", "router")
+  .addEdge("router", "creditCheckNode")
 
-  // ─── Conditional edges from router ────────────────────────────────
-  // Routes to the appropriate agent based on state.selectedAgent
-  .addConditionalEdges("router", (state) => state.selectedAgent, {
+  // ─── Conditional edge from creditCheckNode ─────────────────────────
+  .addConditionalEdges("creditCheckNode", (state) => {
+    if (state.creditCheckFailed) {
+      return "__end__";
+    }
+    return state.selectedAgent;
+  }, {
+    __end__: END,
     chat: "chatAgent",
-    search: "chatAgent", // Search flow: router → chatAgent → searchAgent
+    search: "chatAgent", // Search flow: creditCheckNode → chatAgent → searchAgent
     coding: "codingAgent",
     pdf: "pdfAgent",
     ppt: "pptAgent",
@@ -46,8 +52,6 @@ const workflow = new StateGraph(AgentState)
   })
 
   // ─── Search flow: two-hop chain ───────────────────────────────────
-  // After chatAgent, if this was a search request, continue to searchAgent.
-  // Otherwise (direct chat), end the graph.
   .addConditionalEdges("chatAgent", (state) => {
     if (state.selectedAgent === "search") {
       return "searchAgent";
@@ -58,12 +62,11 @@ const workflow = new StateGraph(AgentState)
     __end__: END,
   })
 
-  // ─── Terminal edges (single-hop agents → END) ─────────────────────
+  // ─── Terminal edges ───────────────────────────────────────────────
   .addEdge("searchAgent", END)
   .addEdge("codingAgent", END)
   .addEdge("pdfAgent", END)
   .addEdge("pptAgent", END)
   .addEdge("imageAgent", END);
 
-// Compile the graph into an invokable object
 export const agentGraph = workflow.compile();

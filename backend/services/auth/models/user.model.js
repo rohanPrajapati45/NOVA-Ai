@@ -20,6 +20,23 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: "",
   },
+  plan: {
+    type: String,
+    enum: ["free", "starter", "pro"],
+    default: "free",
+  },
+  credits: {
+    type: Number,
+    default: 100,
+  },
+  totalCredits: {
+    type: Number,
+    default: 100,
+  },
+  planExpiresAt: {
+    type: Date,
+    default: null,
+  },
   lastLogin: {
     type: Date,
     default: Date.now,

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useSelector, useDispatch } from "react-redux";
-import { setMessages, setMessagesLoading, clearMessages, setActiveArtifact } from "../redux/messageSlice";
+import { setMessages, setMessagesLoading, clearMessages, setActiveArtifact, clearActiveArtifact } from "../redux/messageSlice";
 import { getMessages } from "../features/getMessages";
 import Nav from "./Nav";
 import MessageList from "./MessageList";
@@ -30,7 +30,7 @@ const ChatArea = ({ isArtifactsOpen, onToggleArtifacts }) => {
         const data = await getMessages(activeConversationId);
         dispatch(setMessages(data || []));
 
-        // Find the last assistant message that contains a code artifact and restore it
+        // Find the last assistant message in THIS conversation that contains a code artifact
         if (data && Array.isArray(data)) {
           const lastArtifactMsg = [...data]
             .reverse()
@@ -48,7 +48,12 @@ const ChatArea = ({ isArtifactsOpen, onToggleArtifacts }) => {
                 files: lastArtifactMsg.artifactFiles,
               })
             );
+          } else {
+            // Isolate artifacts per conversation: clear active artifact if this chat has none
+            dispatch(clearActiveArtifact());
           }
+        } else {
+          dispatch(clearActiveArtifact());
         }
       } catch (err) {
         console.error("Failed to fetch messages:", err);

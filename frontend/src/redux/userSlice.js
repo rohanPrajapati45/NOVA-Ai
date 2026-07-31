@@ -23,8 +23,13 @@ const userSlice = createSlice({
     setLoading(state, action) {
       state.loading = action.payload;
     },
+    updateUserCredits(state, action) {
+      if (state.user && typeof action.payload === "number") {
+        state.user.credits = action.payload;
+      }
+    },
   },
 });
 
-export const { setUser, clearUser, setLoading } = userSlice.actions;
+export const { setUser, clearUser, setLoading, updateUserCredits } = userSlice.actions;
 export default userSlice.reducer;

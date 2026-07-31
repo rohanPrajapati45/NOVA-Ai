@@ -3,14 +3,15 @@ import chatApi from "../utils/axios.js";
 import { getConversationHistory } from "../utils/getMessages.js";
 import { appendMessagesToCache } from "../config/memory.js";
 import { getSignedUrlForKey } from "../../../shared/s3/getFromS3.js";
+import { deductCredits } from "../utils/deductCredits.js";
 
 // Valid agent names for server-side validation of agentOverride
 const VALID_AGENTS = ["chat", "search", "coding", "pdf", "ppt", "image"];
 
 /**
  * POST /prompt
- * Fetches recent chat history, invokes the multi-agent graph with conversational context,
- * saves messages to chat service (MongoDB), updates Redis memory cache, and returns response.
+ * Fetches recent chat history, checks credits, invokes the multi-agent graph,
+ * saves messages to chat service (MongoDB), updates Redis memory cache, deducts credits, and returns response.
  */
 export const handlePrompt = async (req, res) => {
   try {
@@ -28,7 +29,7 @@ export const handlePrompt = async (req, res) => {
       return res.status(400).json({ message: "conversationId is required" });
     }
 
-    // Validate agentOverride server-side — if invalid, silently fall back to null (auto-classify)
+    // Validate agentOverride server-side
     let validatedOverride = null;
     if (agentOverride && VALID_AGENTS.includes(agentOverride)) {
       validatedOverride = agentOverride;
@@ -38,7 +39,7 @@ export const handlePrompt = async (req, res) => {
       );
     }
 
-    // ─── 1. Fetch recent conversation history (Cache-Aside: Redis -> Mongo) ─────
+    // ─── 1. Fetch recent conversation history ─────────────────────
     const chatHistory = await getConversationHistory(conversationId, userId);
 
     // ─── 2. Save user message to chat service (MongoDB) ───────────
@@ -63,7 +64,18 @@ export const handlePrompt = async (req, res) => {
       agentOverride: validatedOverride,
     });
 
-    // ─── 4. Save assistant response to chat service (MongoDB) ─────
+    // ─── 4. Check if creditCheckNode flagged insufficient credits ──
+    if (result.creditCheckFailed) {
+      // Pre-check failed: no agent node ran, skip saving assistant message & deduction
+      return res.status(200).json({
+        response: result.response,
+        selectedAgent: result.selectedAgent || "chat",
+        conversationId,
+        creditCheckFailed: true,
+      });
+    }
+
+    // ─── 5. Save assistant response to chat service (MongoDB) ─────
     let assistantMsgSaved = false;
     try {
       await chatApi.post(
@@ -73,17 +85,12 @@ export const handlePrompt = async (req, res) => {
           role: "assistant",
           content: result.response,
           agentType: result.selectedAgent,
-          // Search agent
           searchImages: result.searchResults?.images || [],
-          // Coding agent
           artifactTitle: result.artifactTitle || null,
           artifactFiles: result.artifactFiles || [],
-          // Image agent
           generatedImageKey: result.generatedImageKey || null,
-          // PDF agent
           generatedPdfKey: result.generatedPdfKey || null,
           pdfTitle: result.pdfTitle || null,
-          // PPT agent
           generatedPptKey: result.generatedPptKey || null,
           pptTitle: result.pptTitle || null,
         },
@@ -94,7 +101,7 @@ export const handlePrompt = async (req, res) => {
       console.error("Failed to save assistant message to chat service:", saveError.message);
     }
 
-    // ─── 5. Update Redis memory cache ─────────────────────────────
+    // ─── 6. Update Redis memory cache ─────────────────────────────
     if (userMsgSaved && assistantMsgSaved) {
       await appendMessagesToCache(conversationId, [
         { role: "user", content: userPrompt },
@@ -108,7 +115,14 @@ export const handlePrompt = async (req, res) => {
       console.warn("Skipping Redis cache update due to failed MongoDB persistence");
     }
 
-    // ─── 6. Generate presigned URLs for immediate display ─────────
+    // ─── 7. Post-execution credit deduction ────────────────────────
+    let remainingCredits = null;
+    const deductRes = await deductCredits(userId, result.selectedAgent);
+    if (deductRes && typeof deductRes.remainingCredits === "number") {
+      remainingCredits = deductRes.remainingCredits;
+    }
+
+    // ─── 8. Generate presigned URLs for immediate display ─────────
     let generatedImageUrl = null;
     if (result.generatedImageKey) {
       try {
@@ -136,22 +150,18 @@ export const handlePrompt = async (req, res) => {
       }
     }
 
-    // ─── 7. Return result to client ───────────────────────────────
+    // ─── 9. Return result to client ───────────────────────────────
     return res.status(200).json({
       response: result.response,
       selectedAgent: result.selectedAgent,
       conversationId,
-      // Search
+      remainingCredits,
       searchImages: result.searchResults?.images || [],
-      // Coding
       artifactTitle: result.artifactTitle || null,
       artifactFiles: result.artifactFiles || [],
-      // Image (presigned URL, 1-hour expiry)
       generatedImageUrl,
-      // PDF (presigned URL, 1-hour expiry)
       generatedPdfUrl,
       pdfTitle: result.pdfTitle || null,
-      // PPT (presigned URL, 1-hour expiry)
       generatedPptUrl,
       pptTitle: result.pptTitle || null,
       ...(result.error && { warning: "Partial error occurred: " + result.error }),
