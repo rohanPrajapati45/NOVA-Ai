@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import Conversation from "../models/conversation.model.js";
 import Message from "../models/message.model.js";
+import { refreshFileUrlsOnMessages } from "../utils/refreshFileUrls.js";
 
 /**
  * GET /conversations
@@ -110,7 +111,7 @@ export const saveMessage = async (req, res) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    const { conversationId, role, content, agentType, searchImages, artifactTitle, artifactFiles } = req.body;
+    const { conversationId, role, content, agentType, searchImages, artifactTitle, artifactFiles, generatedImageKey, generatedPdfKey, pdfTitle, generatedPptKey, pptTitle } = req.body;
 
     // Validate required fields
     if (!conversationId) {
@@ -152,6 +153,11 @@ export const saveMessage = async (req, res) => {
       ...(artifactFiles && Array.isArray(artifactFiles) && artifactFiles.length > 0
         ? { artifactFiles }
         : {}),
+      ...(generatedImageKey ? { generatedImageKey } : {}),
+      ...(generatedPdfKey ? { generatedPdfKey } : {}),
+      ...(pdfTitle ? { pdfTitle } : {}),
+      ...(generatedPptKey ? { generatedPptKey } : {}),
+      ...(pptTitle ? { pptTitle } : {}),
     });
 
     // Update parent conversation's lastMessageAt
@@ -196,7 +202,11 @@ export const getMessagesByConversation = async (req, res) => {
     // Fetch messages sorted by createdAt ascending (natural chat order)
     const messages = await Message.find({ conversationId })
       .sort({ createdAt: 1 })
-      .select("-__v");
+      .select("-__v")
+      .lean(); // Plain JS objects so we can attach presigned URLs
+
+    // Generate fresh presigned URLs for any S3-stored files (images, PDFs)
+    await refreshFileUrlsOnMessages(messages);
 
     return res.status(200).json({ messages });
   } catch (error) {

@@ -96,4 +96,19 @@ export const codingModelCall = async (messages, jsonMode = false) => {
 // ─── Image Model ────────────────────────────────────────────────────
 // NOTE: Image generation requires a dedicated image API (e.g. OpenAI DALL-E,
 // Stability AI, or Gemini Imagen). Chat LLMs (Groq/Gemini) cannot generate images.
-// No model is exported here — image.agent.js is a stub for now.
+// No model is exported here — image.agent.js uses Pollinations.ai for generation.
+
+// ─── PDF Report Model ───────────────────────────────────────────────
+
+/**
+ * PDF report content model — generates structured document content.
+ * Uses Llama 3.3 70B Versatile for strong reasoning and well-organized
+ * multi-section report output. Separate from pdfModel (Gemini Flash)
+ * which is reserved for future RAG/Q&A over uploaded PDFs.
+ */
+export const pdfReportModel = new ChatGroq({
+  apiKey: process.env.GROQ_API_KEY,
+  model: "llama-3.3-70b-versatile",
+  temperature: 0.3,
+  maxTokens: 3000,
+});

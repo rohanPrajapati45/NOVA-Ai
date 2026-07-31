@@ -119,6 +119,66 @@ const AgentState = Annotation.Root({
     reducer: (_, next) => next,
     default: () => null,
   }),
+
+  // ─── Image Agent Fields ─────────────────────────────────────────
+
+  /** Groq-refined image prompt (falls back to raw userPrompt if refinement fails) */
+  refinedImagePrompt: Annotation({
+    reducer: (_, next) => next,
+    default: () => null,
+  }),
+
+  /** S3 object key for generated image (NOT a URL — presigned URLs generated on-demand) */
+  generatedImageKey: Annotation({
+    reducer: (_, next) => next,
+    default: () => null,
+  }),
+
+  // ─── PDF Agent Fields ──────────────────────────────────────────
+
+  /**
+   * Structured content from the LLM, before rendering.
+   * Shape: { title: string, subtitle: string|null, sections: [{heading, content, bullets}] }
+   */
+  pdfContent: Annotation({
+    reducer: (_, next) => next,
+    default: () => null,
+  }),
+
+  /** S3 object key for generated PDF (NOT a URL — presigned URLs generated on-demand) */
+  generatedPdfKey: Annotation({
+    reducer: (_, next) => next,
+    default: () => null,
+  }),
+
+  /** Document title for display + download filename */
+  pdfTitle: Annotation({
+    reducer: (_, next) => next,
+    default: () => null,
+  }),
+
+  // ─── PPT Agent Fields ──────────────────────────────────────────
+
+  /**
+   * Structured content from the LLM, before rendering.
+   * Shape: { title: string, subtitle: string|null, slides: [{heading, bullets, content}] }
+   */
+  pptContent: Annotation({
+    reducer: (_, next) => next,
+    default: () => null,
+  }),
+
+  /** S3 object key for generated PPT (NOT a URL — presigned URLs generated on-demand) */
+  generatedPptKey: Annotation({
+    reducer: (_, next) => next,
+    default: () => null,
+  }),
+
+  /** Presentation title for display + download filename */
+  pptTitle: Annotation({
+    reducer: (_, next) => next,
+    default: () => null,
+  }),
 });
 
 export default AgentState;

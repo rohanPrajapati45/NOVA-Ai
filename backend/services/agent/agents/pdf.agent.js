@@ -1,54 +1,168 @@
-import { pdfModel } from "../config/llmModel.js";
-import { ChatPromptTemplate } from "@langchain/core/prompts";
+import { pdfReportModel } from "../config/llmModel.js";
+import { generatePdfBuffer } from "../utils/generatePdf.js";
+import { uploadToS3 } from "../../../shared/s3/uploadToS3.js";
 
-// TODO: Wire RAG pipeline here (e.g. Qdrant vector store + PDF parser)
-// When wired, the flow will be:
-//   1. User uploads a PDF → it gets parsed, chunked, and embedded into Qdrant
-//   2. On each query, relevant chunks are retrieved from the vector store
-//   3. Retrieved context is injected into {retrievedContext} below
-//   4. The pdfModel answers based on the retrieved context + user question
-// For now, this agent responds based on the LLM's general knowledge only.
+// ─── Structured Content Generation Prompt ────────────────────────────
+const SYSTEM_PROMPT = `You are a professional report-writing assistant. Given the user's request, produce a WELL-ORGANIZED document structure as a JSON object.
 
-const SYSTEM_PROMPT = `You are a document analysis AI assistant specialized in answering questions about PDF documents.
+OUTPUT FORMAT (strict JSON, no markdown, no explanation):
+{
+  "title": "Report Title",
+  "subtitle": "Optional subtitle or null",
+  "sections": [
+    {
+      "heading": "Section Heading",
+      "content": "2-5 sentences of substantive prose — real information, not filler.",
+      "bullets": ["point 1", "point 2"] or null
+    }
+  ]
+}
 
-{retrievedContext}
-
-Guidelines:
-- Answer questions based on the document context provided above.
-- If no document context is available, let the user know that no PDF has been uploaded yet,
-  and offer to help once they provide a document.
-- Be precise and quote relevant sections when possible.
-- If the answer isn't in the provided context, say so honestly rather than guessing.`;
-
-const prompt = ChatPromptTemplate.fromMessages([
-  ["system", SYSTEM_PROMPT],
-  ["human", "{userPrompt}"],
-]);
+RULES:
+- Produce AT LEAST 3 sections for any substantive topic. Avoid single-section thin documents.
+- Do NOT pad with unnecessary sections for very simple requests.
+- Each section's "content" must be 2-5 sentences of real, informative prose.
+- Use "bullets" ONLY when the content genuinely calls for a list (key points, steps, comparisons) — not for everything.
+- "subtitle" can be null if not needed.
+- Output ONLY the JSON object — no markdown fences, no explanation, no preamble.`;
 
 /**
- * PDF agent node — handles document-related questions.
- * STUBBED: No RAG/Qdrant pipeline is wired yet. Uses LLM knowledge only.
- * Uses Gemini 1.5 Flash for its 1M token context window.
+ * Attempts to parse the LLM output as structured PDF content JSON.
+ * Validates the expected shape and returns the parsed object, or null on failure.
+ */
+function parsePdfContentJson(raw) {
+  try {
+    // Strip markdown fences if the model wrapped the JSON
+    let cleaned = raw.trim();
+    if (cleaned.startsWith("```")) {
+      cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
+    }
+
+    const parsed = JSON.parse(cleaned);
+
+    // Validate shape
+    if (!parsed || typeof parsed !== "object") return null;
+    if (typeof parsed.title !== "string" || !parsed.title.trim()) return null;
+    if (!Array.isArray(parsed.sections) || parsed.sections.length === 0) return null;
+
+    // Validate each section
+    for (const section of parsed.sections) {
+      if (typeof section.heading !== "string" || !section.heading.trim()) return null;
+      if (typeof section.content !== "string") return null;
+    }
+
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * PDF agent node — generates structured reports as downloadable PDFs.
+ *
+ * Flow:
+ *   1. LLM generates structured JSON content (title, sections, bullets)
+ *   2. generatePdfBuffer renders it into a formatted PDF (PDFKit)
+ *   3. Upload to S3 (private bucket, returns object Key)
+ *   4. Returns response text + pdfTitle + generatedPdfKey for frontend
+ *
+ * Error handling produces distinct, honest messages for each failure mode.
  */
 export const pdfAgent = async (state) => {
+  // ─── STEP 1: Structured content generation via Groq ───────────────
+  let pdfContent = null;
+
+  const messages = [
+    { role: "system", content: SYSTEM_PROMPT },
+    { role: "user", content: state.userPrompt },
+  ];
+
   try {
-    // TODO: Replace this with actual retrieved context from Qdrant
-    const retrievedContext =
-      "Note: No PDF document has been uploaded or indexed yet. " +
-      "The RAG pipeline will be connected in a future update.";
-
-    const chain = prompt.pipe(pdfModel);
-    const result = await chain.invoke({
-      userPrompt: state.userPrompt,
-      retrievedContext,
+    const result = await pdfReportModel.invoke(messages, {
+      response_format: { type: "json_object" },
     });
+    pdfContent = parsePdfContentJson(result.content || "");
 
-    return { response: result.content };
-  } catch (error) {
-    console.error("PDF agent error:", error.message);
+    // Retry once with a stricter reminder if first attempt was malformed
+    if (!pdfContent) {
+      console.warn("[PdfAgent] First LLM attempt returned malformed JSON, retrying...");
+      messages.push({
+        role: "user",
+        content:
+          "Your previous response was not valid JSON or was missing required fields. " +
+          "Please output ONLY a valid JSON object with: title (string), subtitle (string|null), " +
+          "sections (array of {heading: string, content: string, bullets: string[]|null}). " +
+          "No markdown, no explanation.",
+      });
+      const retryResult = await pdfReportModel.invoke(messages, {
+        response_format: { type: "json_object" },
+      });
+      pdfContent = parsePdfContentJson(retryResult.content || "");
+    }
+  } catch (llmErr) {
+    console.error("[PdfAgent] LLM content generation failed:", llmErr.message);
+  }
+
+  if (!pdfContent) {
     return {
-      response: "I'm sorry, I couldn't process your document request. Please try again.",
-      error: error.message,
+      response:
+        "I wasn't able to structure the report content properly. Could you rephrase your request or try again?",
+      pdfContent: null,
+      pdfTitle: null,
+      generatedPdfKey: null,
     };
   }
+
+  const pdfTitle = pdfContent.title;
+  console.log(`[PdfAgent] Content generated: "${pdfTitle}" with ${pdfContent.sections.length} sections`);
+
+  // ─── STEP 2: Render to PDF ────────────────────────────────────────
+  let pdfBuffer;
+  try {
+    pdfBuffer = await generatePdfBuffer(pdfContent);
+    console.log(`[PdfAgent] PDF rendered: ${pdfBuffer.length} bytes`);
+  } catch (renderErr) {
+    console.error("[PdfAgent] PDFKit rendering failed:", renderErr.message);
+    return {
+      response:
+        "I prepared the content but hit an issue formatting the PDF — could you try again?",
+      pdfContent,
+      pdfTitle,
+      generatedPdfKey: null,
+    };
+  }
+
+  // ─── STEP 3: Upload to S3 ────────────────────────────────────────
+  let s3Key;
+  try {
+    // Sanitize title for filename
+    const safeFilename =
+      pdfTitle.replace(/[^a-zA-Z0-9\s-]/g, "").replace(/\s+/g, "-").substring(0, 60) ||
+      `report-${Date.now()}`;
+
+    s3Key = await uploadToS3({
+      buffer: pdfBuffer,
+      filename: `${safeFilename}.pdf`,
+      contentType: "application/pdf",
+    });
+
+    console.log(`[PdfAgent] PDF uploaded to S3. Key: "${s3Key}"`);
+  } catch (uploadErr) {
+    console.error("[PdfAgent] S3 upload failed (PDF was generated but couldn't be stored):", uploadErr.message);
+    return {
+      response:
+        "I created the report but ran into an issue saving it — could you try again?",
+      pdfContent,
+      pdfTitle,
+      generatedPdfKey: null,
+    };
+  }
+
+  // ─── STEP 4: Success response ────────────────────────────────────
+  return {
+    response: `I've put together a report on **"${pdfTitle}"** — you can view or download it below.`,
+    pdfContent,
+    pdfTitle,
+    generatedPdfKey: s3Key,
+  };
 };
