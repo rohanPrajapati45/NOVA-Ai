@@ -149,8 +149,14 @@ const ChatInput = ({ draftMessage, setDraftMessage }) => {
           // Include artifacts
           artifactTitle: result.artifactTitle || null,
           artifactFiles: result.artifactFiles || [],
-          // Include generated image presigned URL for immediate display
+          // Image agent presigned URL
           generatedImageUrl: result.generatedImageUrl || null,
+          // PDF agent presigned URL + title
+          generatedPdfUrl: result.generatedPdfUrl || null,
+          pdfTitle: result.pdfTitle || null,
+          // PPT agent presigned URL + title
+          generatedPptUrl: result.generatedPptUrl || null,
+          pptTitle: result.pptTitle || null,
         })
       );
 

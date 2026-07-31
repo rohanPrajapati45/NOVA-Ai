@@ -73,13 +73,19 @@ export const handlePrompt = async (req, res) => {
           role: "assistant",
           content: result.response,
           agentType: result.selectedAgent,
-          // Include search images if the search agent produced them
+          // Search agent
           searchImages: result.searchResults?.images || [],
-          // Include artifact fields if the coding agent produced them
+          // Coding agent
           artifactTitle: result.artifactTitle || null,
           artifactFiles: result.artifactFiles || [],
-          // Include generated image key if the image agent produced one
+          // Image agent
           generatedImageKey: result.generatedImageKey || null,
+          // PDF agent
+          generatedPdfKey: result.generatedPdfKey || null,
+          pdfTitle: result.pdfTitle || null,
+          // PPT agent
+          generatedPptKey: result.generatedPptKey || null,
+          pptTitle: result.pptTitle || null,
         },
         { headers: { "x-user-id": userId } }
       );
@@ -102,13 +108,31 @@ export const handlePrompt = async (req, res) => {
       console.warn("Skipping Redis cache update due to failed MongoDB persistence");
     }
 
-    // ─── 6. Generate presigned URL for immediate display ──────────
+    // ─── 6. Generate presigned URLs for immediate display ─────────
     let generatedImageUrl = null;
     if (result.generatedImageKey) {
       try {
         generatedImageUrl = await getSignedUrlForKey(result.generatedImageKey, 3600);
-      } catch (presignErr) {
-        console.error("Failed to generate presigned URL for image:", presignErr.message);
+      } catch (err) {
+        console.error("Failed to presign image key:", err.message);
+      }
+    }
+
+    let generatedPdfUrl = null;
+    if (result.generatedPdfKey) {
+      try {
+        generatedPdfUrl = await getSignedUrlForKey(result.generatedPdfKey, 3600);
+      } catch (err) {
+        console.error("Failed to presign PDF key:", err.message);
+      }
+    }
+
+    let generatedPptUrl = null;
+    if (result.generatedPptKey) {
+      try {
+        generatedPptUrl = await getSignedUrlForKey(result.generatedPptKey, 3600);
+      } catch (err) {
+        console.error("Failed to presign PPT key:", err.message);
       }
     }
 
@@ -117,14 +141,19 @@ export const handlePrompt = async (req, res) => {
       response: result.response,
       selectedAgent: result.selectedAgent,
       conversationId,
-      // Include search images in the API response so the frontend can render them
-      // immediately (without waiting for a message re-fetch)
+      // Search
       searchImages: result.searchResults?.images || [],
-      // Include artifact fields for immediate UI response mapping
+      // Coding
       artifactTitle: result.artifactTitle || null,
       artifactFiles: result.artifactFiles || [],
-      // Include presigned URL for immediate image display (1-hour expiry)
+      // Image (presigned URL, 1-hour expiry)
       generatedImageUrl,
+      // PDF (presigned URL, 1-hour expiry)
+      generatedPdfUrl,
+      pdfTitle: result.pdfTitle || null,
+      // PPT (presigned URL, 1-hour expiry)
+      generatedPptUrl,
+      pptTitle: result.pptTitle || null,
       ...(result.error && { warning: "Partial error occurred: " + result.error }),
     });
   } catch (error) {

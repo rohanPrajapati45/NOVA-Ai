@@ -3,7 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { Bot, User, Copy, Check, ImageOff, X, Download } from "lucide-react";
+import { Bot, User, Copy, Check, ImageOff, X, FileText, Download, Presentation } from "lucide-react";
 
 /**
  * CopyButton — overlays top-right of code blocks.
@@ -679,6 +679,131 @@ const markdownComponents = {
 };
 
 /**
+ * FileDownloadCard — reusable download card for AI-generated files (PDF, PPT, etc.).
+ * Parameterized with icon, colors, and file type label so new file agents
+ * can reuse the same component without building separate UI.
+ * Uses fetch → blob → anchor-click download for cross-origin presigned URLs.
+ */
+const FileDownloadCard = ({ url, title, filename, typeLabel, IconComponent, iconColor, iconBgColor }) => {
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = async () => {
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      const response = await fetch(url, { mode: "cors" });
+      if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      console.warn(`${typeLabel} blob download failed, opening in new tab:`, err);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        marginTop: "12px",
+        padding: "12px 16px",
+        background: "rgba(255,255,255,0.03)",
+        borderRadius: "12px",
+        border: "1px solid var(--border-subtle)",
+        display: "flex",
+        alignItems: "center",
+        gap: "12px",
+        maxWidth: "420px",
+        transition: "border-color 0.2s",
+        cursor: "pointer",
+      }}
+      onClick={handleDownload}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = "var(--accent)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = "var(--border-subtle)";
+      }}
+    >
+      {/* File type icon */}
+      <div
+        style={{
+          width: "40px",
+          height: "40px",
+          borderRadius: "10px",
+          background: iconBgColor,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+        }}
+      >
+        <IconComponent size={20} style={{ color: iconColor }} />
+      </div>
+
+      {/* Title + type label */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: "13px",
+            fontWeight: 600,
+            color: "var(--text-primary)",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {title}
+        </div>
+        <div
+          style={{
+            fontSize: "11px",
+            color: "var(--text-muted)",
+            marginTop: "2px",
+          }}
+        >
+          {typeLabel} • Click to download
+        </div>
+      </div>
+
+      {/* Download button */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          handleDownload();
+        }}
+        style={{
+          padding: "6px 12px",
+          borderRadius: "8px",
+          border: "1px solid var(--border-subtle)",
+          background: "var(--accent-muted)",
+          color: "var(--accent)",
+          fontSize: "12px",
+          fontWeight: 500,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          gap: "4px",
+          flexShrink: 0,
+          transition: "background 0.2s",
+        }}
+      >
+        <Download size={14} />
+        <span>{downloading ? "Saving…" : "Download"}</span>
+      </button>
+    </div>
+  );
+};
+
+/**
  * Single message renderer with asymmetric styling:
  * - USER messages: right-aligned bubble with accent background (unchanged)
  * - ASSISTANT messages: left-aligned, NO bubble background (professional look,
@@ -687,6 +812,10 @@ const markdownComponents = {
 const MessageBubble = ({ message }) => {
   const isUser = message.role === "user";
   const searchImages = message.searchImages || [];
+  const generatedPdfUrl = message.generatedPdfUrl || null;
+  const pdfTitle = message.pdfTitle || null;
+  const generatedPptUrl = message.generatedPptUrl || null;
+  const pptTitle = message.pptTitle || null;
   const generatedImageUrl = message.generatedImageUrl || null;
 
   return (
@@ -711,7 +840,7 @@ const MessageBubble = ({ message }) => {
 
       {/* Content */}
       {isUser ? (
-        /* USER BUBBLE — keeps existing accent-tinted bubble styling */
+        /* USER BUBBLE */
         <div
           className="rounded-2xl"
           style={{
@@ -746,12 +875,33 @@ const MessageBubble = ({ message }) => {
             </ReactMarkdown>
           </div>
 
-          {/* AI-generated image — only rendered when image agent produced one */}
-          {generatedImageUrl && (
-            <GeneratedImageBlock imageUrl={generatedImageUrl} />
+          {/* AI-generated PDF download card */}
+          {generatedPdfUrl && (
+            <FileDownloadCard
+              url={generatedPdfUrl}
+              title={pdfTitle || "Report"}
+              filename={`${pdfTitle || "report"}.pdf`}
+              typeLabel="PDF Document"
+              IconComponent={FileText}
+              iconColor="#DC2626"
+              iconBgColor="rgba(220, 38, 38, 0.12)"
+            />
           )}
 
-          {/* Search result images — only rendered when present */}
+          {/* AI-generated PPT download card */}
+          {generatedPptUrl && (
+            <FileDownloadCard
+              url={generatedPptUrl}
+              title={pptTitle || "Presentation"}
+              filename={`${pptTitle || "presentation"}.pptx`}
+              typeLabel="PowerPoint Presentation"
+              IconComponent={Presentation}
+              iconColor="#D97706"
+              iconBgColor="rgba(217, 119, 6, 0.12)"
+            />
+          )}
+
+          {/* Search result images */}
           {searchImages.length > 0 && (
             <SearchImageStrip images={searchImages} />
           )}

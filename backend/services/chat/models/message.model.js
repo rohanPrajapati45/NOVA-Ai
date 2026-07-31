@@ -65,9 +65,38 @@ const messageSchema = new mongoose.Schema(
     /**
      * S3 object key for AI-generated images (from image agent).
      * NOT a URL — presigned URLs are generated on-demand when messages are fetched.
-     * null for non-image-generation messages.
      */
     generatedImageKey: {
+      type: String,
+      default: null,
+    },
+    /**
+     * S3 object key for AI-generated PDF reports (from PDF agent).
+     * NOT a URL — presigned URLs are generated on-demand when messages are fetched.
+     */
+    generatedPdfKey: {
+      type: String,
+      default: null,
+    },
+    /**
+     * Display title for the generated PDF (used as label + download filename).
+     */
+    pdfTitle: {
+      type: String,
+      default: null,
+    },
+    /**
+     * S3 object key for AI-generated presentations (from PPT agent).
+     * NOT a URL — presigned URLs are generated on-demand when messages are fetched.
+     */
+    generatedPptKey: {
+      type: String,
+      default: null,
+    },
+    /**
+     * Display title for the generated PPT (used as label + download filename).
+     */
+    pptTitle: {
       type: String,
       default: null,
     },

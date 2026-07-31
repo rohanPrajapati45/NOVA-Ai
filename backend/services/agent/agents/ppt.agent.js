@@ -1,51 +1,170 @@
-import { pptModel } from "../config/llmModel.js";
-import { ChatPromptTemplate } from "@langchain/core/prompts";
+import { pdfReportModel } from "../config/llmModel.js";
+import { generatePptBuffer } from "../utils/generatePpt.js";
+import { uploadToS3 } from "../../../shared/s3/uploadToS3.js";
 
-// TODO: Wire a slide generation library here (e.g. PptxGenJS or python-pptx via subprocess)
-// When wired, the flow will be:
-//   1. This agent generates structured slide content (title, bullets, notes per slide)
-//   2. A downstream step converts the structured content into an actual .pptx file
-//   3. The file is returned to the user as a downloadable attachment
-// For now, this agent outputs structured text content for a presentation.
+// Reuse pdfReportModel (same Groq llama-3.3-70b-versatile, temp 0.3, 3000 tokens)
+// — identical config works well for both structured PDF and PPT content generation.
+const pptModel = pdfReportModel;
 
-const SYSTEM_PROMPT = `You are a presentation content specialist.
-Your job is to create well-structured presentation slide content based on the user's topic.
+// ─── Structured Content Generation Prompt ────────────────────────────
+const SYSTEM_PROMPT = `You are a professional presentation-writing assistant. Given the user's request, produce a WELL-ORGANIZED slide deck structure as a JSON object.
 
-Output format for each slide:
-## Slide [number]: [Slide Title]
-- Bullet point 1
-- Bullet point 2
-- Bullet point 3
-**Speaker Notes:** Brief notes for the presenter.
+OUTPUT FORMAT (strict JSON, no markdown, no explanation):
+{
+  "title": "Presentation Title",
+  "subtitle": "Optional subtitle or null",
+  "slides": [
+    {
+      "heading": "Slide Heading",
+      "bullets": ["point 1", "point 2", "point 3"] or null,
+      "content": "A short paragraph for this slide" or null
+    }
+  ]
+}
 
-Guidelines:
-- Create 5-10 slides unless the user specifies a count.
-- Start with a title slide and end with a summary/conclusion slide.
-- Keep bullet points concise (max 8 words each).
-- Include speaker notes with additional context.
-- Use a logical flow: introduction → key points → details → conclusion.`;
-
-const prompt = ChatPromptTemplate.fromMessages([
-  ["system", SYSTEM_PROMPT],
-  ["human", "{userPrompt}"],
-]);
+RULES:
+- Produce between 5-10 content slides for a typical request (not counting cover/closing slides).
+- PREFER bullets over paragraph content for most slides — real presentations use concise bullet points, not dense paragraphs.
+- Use paragraph "content" ONLY when a slide is genuinely better as flowing text (e.g. a key takeaway, mission statement, or quote).
+- Maximum 5-6 bullets per slide. Each bullet should be concise (aim for one line, not multi-sentence bullets).
+- Each slide must have at least one of "bullets" or "content" (both can be null, but at least one should be populated).
+- "subtitle" can be null if not needed.
+- Output ONLY the JSON object — no markdown fences, no explanation, no preamble.`;
 
 /**
- * PPT agent node — handles presentation/slide creation requests.
- * STUBBED: Outputs structured text content, not actual .pptx files yet.
- * Uses Gemini 1.5 Flash for reasoning + structured content generation.
+ * Attempts to parse the LLM output as structured PPT content JSON.
+ * Validates the expected shape and returns the parsed object, or null on failure.
+ */
+function parsePptContentJson(raw) {
+  try {
+    let cleaned = raw.trim();
+    if (cleaned.startsWith("```")) {
+      cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
+    }
+
+    const parsed = JSON.parse(cleaned);
+
+    if (!parsed || typeof parsed !== "object") return null;
+    if (typeof parsed.title !== "string" || !parsed.title.trim()) return null;
+    if (!Array.isArray(parsed.slides) || parsed.slides.length === 0) return null;
+
+    for (const slide of parsed.slides) {
+      if (typeof slide.heading !== "string" || !slide.heading.trim()) return null;
+    }
+
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * PPT agent node — generates structured presentations as downloadable .pptx files.
+ *
+ * Flow:
+ *   1. LLM generates structured JSON content (title, slides with headings/bullets)
+ *   2. generatePptBuffer renders it into a formatted .pptx (pptxgenjs)
+ *   3. Upload to S3 (private bucket, returns object Key)
+ *   4. Returns response text + pptTitle + generatedPptKey for frontend
+ *
+ * Error handling produces distinct, honest messages for each failure mode
+ * (matching pdf.agent.js's pattern).
  */
 export const pptAgent = async (state) => {
-  try {
-    const chain = prompt.pipe(pptModel);
-    const result = await chain.invoke({ userPrompt: state.userPrompt });
+  // ─── STEP 1: Structured content generation via Groq ───────────────
+  let pptContent = null;
 
-    return { response: result.content };
-  } catch (error) {
-    console.error("PPT agent error:", error.message);
+  const messages = [
+    { role: "system", content: SYSTEM_PROMPT },
+    { role: "user", content: state.userPrompt },
+  ];
+
+  try {
+    const result = await pptModel.invoke(messages, {
+      response_format: { type: "json_object" },
+    });
+    pptContent = parsePptContentJson(result.content || "");
+
+    // Retry once with a stricter reminder if first attempt was malformed
+    if (!pptContent) {
+      console.warn("[PptAgent] First LLM attempt returned malformed JSON, retrying...");
+      messages.push({
+        role: "user",
+        content:
+          "Your previous response was not valid JSON or was missing required fields. " +
+          "Please output ONLY a valid JSON object with: title (string), subtitle (string|null), " +
+          "slides (array of {heading: string, bullets: string[]|null, content: string|null}). " +
+          "No markdown, no explanation.",
+      });
+      const retryResult = await pptModel.invoke(messages, {
+        response_format: { type: "json_object" },
+      });
+      pptContent = parsePptContentJson(retryResult.content || "");
+    }
+  } catch (llmErr) {
+    console.error("[PptAgent] LLM content generation failed:", llmErr.message);
+  }
+
+  if (!pptContent) {
     return {
-      response: "I'm sorry, I couldn't generate your presentation. Please try again.",
-      error: error.message,
+      response:
+        "I wasn't able to structure the presentation content properly. Could you rephrase your request or try again?",
+      pptContent: null,
+      pptTitle: null,
+      generatedPptKey: null,
     };
   }
+
+  const pptTitle = pptContent.title;
+  console.log(`[PptAgent] Content generated: "${pptTitle}" with ${pptContent.slides.length} slides`);
+
+  // ─── STEP 2: Render to PPTX ───────────────────────────────────────
+  let pptBuffer;
+  try {
+    pptBuffer = await generatePptBuffer(pptContent);
+    console.log(`[PptAgent] PPTX rendered: ${pptBuffer.length} bytes`);
+  } catch (renderErr) {
+    console.error("[PptAgent] pptxgenjs rendering failed:", renderErr.message);
+    return {
+      response:
+        "I prepared the content but hit an issue formatting the presentation — could you try again?",
+      pptContent,
+      pptTitle,
+      generatedPptKey: null,
+    };
+  }
+
+  // ─── STEP 3: Upload to S3 ────────────────────────────────────────
+  let s3Key;
+  try {
+    const safeFilename =
+      pptTitle.replace(/[^a-zA-Z0-9\s-]/g, "").replace(/\s+/g, "-").substring(0, 60) ||
+      `presentation-${Date.now()}`;
+
+    s3Key = await uploadToS3({
+      buffer: pptBuffer,
+      filename: `${safeFilename}.pptx`,
+      contentType:
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    });
+
+    console.log(`[PptAgent] PPTX uploaded to S3. Key: "${s3Key}"`);
+  } catch (uploadErr) {
+    console.error("[PptAgent] S3 upload failed (PPTX was generated but couldn't be stored):", uploadErr.message);
+    return {
+      response:
+        "I created the presentation but ran into an issue saving it — could you try again?",
+      pptContent,
+      pptTitle,
+      generatedPptKey: null,
+    };
+  }
+
+  // ─── STEP 4: Success response ────────────────────────────────────
+  return {
+    response: `I've put together a presentation on **"${pptTitle}"** — you can download it below.`,
+    pptContent,
+    pptTitle,
+    generatedPptKey: s3Key,
+  };
 };
