@@ -20,9 +20,6 @@ app.use(morgan("dev"));
 // Parse cookies (needed to forward session cookies to auth service)
 app.use(cookieParser());
 
-// Parse JSON bodies (needed for proxyWithHeader to read req.body)
-app.use(express.json());
-
 // CORS — credentials: true required for session cookies,
 // must use exact origin (not wildcard "*")
 app.use(
@@ -37,7 +34,7 @@ app.use(
 // Forward /api/auth/* → auth service (no session check needed — auth handles its own)
 app.use(
   "/api/auth",
-  proxy(process.env.AUTH_SERVICE, {
+  proxy(process.env.AUTH_SERVICE || "http://localhost:8001", {
     proxyReqPathResolver: (req) => {
       // /api/auth/google → /google
       // /api/auth/me     → /me
@@ -59,7 +56,6 @@ app.use(
 );
 
 // Forward /api/chat/* → chat service (requires authenticated session)
-// Flow: verifySession reads cookie → sets req.userId → proxyWithAuth forwards with x-user-id header
 app.use(
   "/api/chat",
   verifySession,
@@ -67,7 +63,6 @@ app.use(
 );
 
 // Forward /api/agent/* → agent service (requires authenticated session)
-// Same flow: verifySession → proxyWithAuth with x-user-id header
 app.use(
   "/api/agent",
   verifySession,

@@ -3,6 +3,7 @@ import {
   getUserConversations,
   createConversation,
   updateConversation,
+  deleteConversation,
   saveMessage,
   getMessagesByConversation,
 } from "../controller/chat.controller.js";
@@ -17,6 +18,9 @@ router.post("/conversation", createConversation);
 
 // PATCH /conversation/:conversationId — update conversation (e.g. title)
 router.patch("/conversation/:conversationId", updateConversation);
+
+// DELETE /conversation/:conversationId — delete conversation and messages
+router.delete("/conversation/:conversationId", deleteConversation);
 
 // POST /message — save a message to a conversation
 router.post("/message", saveMessage);

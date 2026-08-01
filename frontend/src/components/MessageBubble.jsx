@@ -2,8 +2,9 @@ import React, { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { Bot, User, Copy, Check, ImageOff, X, FileText, Download, Presentation } from "lucide-react";
+import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { useTheme } from "../context/ThemeContext";
+import { Bot, User, Copy, Check, ImageOff, X, FileText, Download, Presentation, Paperclip, ImageIcon } from "lucide-react";
 
 /**
  * CopyButton — overlays top-right of code blocks.
@@ -341,98 +342,98 @@ const GeneratedImageBlock = ({ imageUrl }) => {
 };
 
 /**
- * Custom react-markdown component overrides for rich assistant message rendering.
+ * CodeBlock component for ReactMarkdown with theme-aware syntax highlighting.
  */
-const markdownComponents = {
-  // ─── Code blocks + inline code ─────────────────────────────────
-  code({ node, inline, className, children, ...props }) {
-    const match = /language-(\w+)/.exec(className || "");
+const CodeBlock = ({ node, inline, className, children, ...props }) => {
+  const { theme } = useTheme();
+  const match = /language-(\w+)/.exec(className || "");
+  const codeString = String(children).replace(/\n$/, "");
 
-    // Fenced code block with language → syntax highlighted
-    if (!inline && match) {
-      const codeString = String(children).replace(/\n$/, "");
-      return (
-        <div style={{ position: "relative", margin: "12px 0" }}>
-          {/* Language badge */}
-          <div
-            style={{
-              position: "absolute",
-              top: "8px",
-              left: "12px",
-              fontSize: "10px",
-              color: "var(--text-muted)",
-              textTransform: "uppercase",
-              letterSpacing: "0.5px",
-              zIndex: 2,
-            }}
-          >
-            {match[1]}
-          </div>
-          <CopyButton text={codeString} />
-          <SyntaxHighlighter
-            style={oneDark}
-            language={match[1]}
-            PreTag="div"
-            customStyle={{
-              background: "#1A1A24",
-              borderRadius: "10px",
-              padding: "32px 16px 16px",
-              fontSize: "13px",
-              lineHeight: "1.6",
-              border: "1px solid var(--border-subtle)",
-              margin: 0,
-            }}
-            {...props}
-          >
-            {codeString}
-          </SyntaxHighlighter>
-        </div>
-      );
-    }
-
-    // Fenced code block WITHOUT language → plain block, still gets copy button
-    if (!inline) {
-      const codeString = String(children).replace(/\n$/, "");
-      return (
-        <div style={{ position: "relative", margin: "12px 0" }}>
-          <CopyButton text={codeString} />
-          <pre
-            style={{
-              background: "#1A1A24",
-              borderRadius: "10px",
-              padding: "32px 16px 16px",
-              fontSize: "13px",
-              lineHeight: "1.6",
-              border: "1px solid var(--border-subtle)",
-              margin: 0,
-              overflowX: "auto",
-              color: "var(--text-primary)",
-              fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
-            }}
-          >
-            <code>{codeString}</code>
-          </pre>
-        </div>
-      );
-    }
-
-    // Inline code (single backticks)
+  // Fenced code block with language → syntax highlighted
+  if (!inline && match) {
     return (
-      <code
-        style={{
-          background: "rgba(108, 92, 231, 0.15)",
-          color: "var(--accent-hover)",
-          padding: "2px 6px",
-          borderRadius: "4px",
-          fontSize: "0.9em",
-          fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
-        }}
-        {...props}
-      >
-        {children}
-      </code>
+      <div style={{ position: "relative", margin: "12px 0" }}>
+        {/* Language badge */}
+        <div
+          style={{
+            position: "absolute",
+            top: "8px",
+            left: "12px",
+            fontSize: "10px",
+            color: "var(--text-muted)",
+            textTransform: "uppercase",
+            letterSpacing: "0.5px",
+            zIndex: 2,
+          }}
+        >
+          {match[1]}
+        </div>
+        <CopyButton text={codeString} />
+        <SyntaxHighlighter
+          style={theme === "light" ? oneLight : oneDark}
+          language={match[1]}
+          PreTag="div"
+          customStyle={{
+            background: "var(--bg-elevated)",
+            borderRadius: "10px",
+            padding: "32px 16px 16px",
+            fontSize: "13px",
+            lineHeight: "1.6",
+            border: "1px solid var(--border-subtle)",
+            margin: 0,
+          }}
+          {...props}
+        >
+          {codeString}
+        </SyntaxHighlighter>
+      </div>
     );
-  },
+  }
+
+  // Fenced code block WITHOUT language → plain block, still gets copy button
+  if (!inline) {
+    return (
+      <div style={{ position: "relative", margin: "12px 0" }}>
+        <CopyButton text={codeString} />
+        <pre
+          style={{
+            background: "var(--bg-elevated)",
+            border: "1px solid var(--border-subtle)",
+            borderRadius: "10px",
+            padding: "16px",
+            fontSize: "13px",
+            lineHeight: "1.6",
+            overflowX: "auto",
+            margin: 0,
+            color: "var(--text-primary)",
+          }}
+        >
+          <code>{codeString}</code>
+        </pre>
+      </div>
+    );
+  }
+
+  // Inline code snippet `foo`
+  return (
+    <code
+      style={{
+        background: "var(--bg-elevated)",
+        border: "1px solid var(--border-subtle)",
+        borderRadius: "4px",
+        padding: "2px 6px",
+        fontSize: "12.5px",
+        color: "var(--accent)",
+      }}
+      {...props}
+    >
+      {children}
+    </code>
+  );
+};
+
+const markdownComponents = {
+  code: CodeBlock,
 
   // ─── Links ─────────────────────────────────────────────────────
   a({ href, children, ...props }) {
@@ -842,9 +843,8 @@ const MessageBubble = ({ message }) => {
       {isUser ? (
         /* USER BUBBLE */
         <div
-          className="rounded-2xl"
+          className="rounded-2xl max-w-[85%] md:max-w-[75%]"
           style={{
-            maxWidth: "75%",
             padding: "10px 16px",
             background: "var(--accent)",
             color: "#FFFFFF",
@@ -854,13 +854,48 @@ const MessageBubble = ({ message }) => {
             wordBreak: "break-word",
           }}
         >
-          <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{message.content}</p>
+          {/* Attachment indicator chip */}
+          {message.attachmentName && (
+            <div
+              className="flex items-center gap-2 rounded-lg mb-2"
+              style={{
+                padding: "6px 10px",
+                background: "rgba(255,255,255,0.15)",
+                border: "1px solid rgba(255,255,255,0.2)",
+                borderRadius: "10px",
+              }}
+            >
+              {/* Image thumbnail or PDF icon */}
+              {message.attachmentType === "image" && message.attachmentPreviewUrl ? (
+                <img
+                  src={message.attachmentPreviewUrl}
+                  alt="Attached"
+                  className="rounded flex-shrink-0"
+                  style={{ width: "32px", height: "32px", objectFit: "cover" }}
+                />
+              ) : message.attachmentType === "image" ? (
+                <ImageIcon size={16} style={{ opacity: 0.8, flexShrink: 0 }} />
+              ) : (
+                <FileText size={16} style={{ opacity: 0.8, flexShrink: 0 }} />
+              )}
+              <span
+                className="truncate"
+                style={{ fontSize: "12px", opacity: 0.9, maxWidth: "200px" }}
+              >
+                {message.attachmentName}
+              </span>
+              <Paperclip size={12} style={{ opacity: 0.5, flexShrink: 0 }} />
+            </div>
+          )}
+          {message.content && (
+            <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{message.content}</p>
+          )}
         </div>
       ) : (
         /* ASSISTANT — no bubble background, professional flat rendering */
         <div
+          className="max-w-[95%] md:max-w-[85%]"
           style={{
-            maxWidth: "85%",
             fontSize: "13.5px",
             lineHeight: "1.65",
             wordBreak: "break-word",

@@ -1,12 +1,22 @@
 import React, { useRef, useEffect } from "react";
-import { useSelector } from "react-redux";
-import { Sparkles, Code2, Search, FileText, Presentation } from "lucide-react";
+import { useSelector, useDispatch } from "react-redux";
+import { Sparkles, Code2, Search, FileText, Presentation, Bot } from "lucide-react";
+import { setThinkingText } from "../redux/messageSlice";
 import MessageBubble from "./MessageBubble";
 
 /**
+ * Sequential thinking steps shown while waiting for agent responses.
+ */
+const THINKING_STEPS = [
+  "Analyzing your request...",
+  "Selecting optimal AI agent...",
+  "Processing context & reasoning...",
+  "Generating response...",
+  "Finalizing output...",
+];
+
+/**
  * Example prompt cards for the empty state.
- * Clicking a card prefills the input (not auto-send) — this prevents
- * accidental sends of example prompts and lets users review/edit first.
  */
 const EXAMPLE_PROMPTS = [
   {
@@ -36,15 +46,46 @@ const EXAMPLE_PROMPTS = [
 ];
 
 const MessageList = ({ activeConversationId, setDraftMessage }) => {
-  const { messages, loading, sending } = useSelector((state) => state.message);
+  const dispatch = useDispatch();
+  const { messages, loading, sending, thinkingText } = useSelector((state) => state.message);
   const bottomRef = useRef(null);
+  const prevConvoIdRef = useRef(activeConversationId);
 
-  // Auto-scroll to the latest message whenever messages change
+  // ─── Dynamic Thinking Text Cycler ──────────────────────────────
   useEffect(() => {
-    if (bottomRef.current) {
-      bottomRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages.length, sending]);
+    if (!sending) return;
+
+    let stepIndex = 0;
+    dispatch(setThinkingText(THINKING_STEPS[0]));
+
+    const interval = setInterval(() => {
+      stepIndex = (stepIndex + 1) % THINKING_STEPS.length;
+      dispatch(setThinkingText(THINKING_STEPS[stepIndex]));
+    }, 2800);
+
+    return () => clearInterval(interval);
+  }, [sending, dispatch]);
+
+  // ─── Auto-Scroll Logic ─────────────────────────────────────────
+  useEffect(() => {
+    if (!bottomRef.current) return;
+
+    const isConvoSwitch = prevConvoIdRef.current !== activeConversationId;
+    prevConvoIdRef.current = activeConversationId;
+
+    // Instant scroll on conversation switch, smooth scroll on new messages / sending
+    const scrollBehavior = isConvoSwitch ? "auto" : "smooth";
+
+    // Use double rAF to guarantee DOM layout calculations have updated
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        bottomRef.current?.scrollIntoView({
+          behavior: scrollBehavior,
+          block: "end",
+        });
+      });
+    });
+  }, [messages, sending, loading, activeConversationId]);
 
   // ─── Empty state: no conversation or no messages ──────────────────
   if (!activeConversationId || (messages.length === 0 && !loading)) {
@@ -137,7 +178,7 @@ const MessageList = ({ activeConversationId, setDraftMessage }) => {
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <div className="flex gap-1">
+          <div className="flex gap-1.5">
             {[0, 1, 2].map((i) => (
               <div
                 key={i}
@@ -167,11 +208,12 @@ const MessageList = ({ activeConversationId, setDraftMessage }) => {
           <MessageBubble key={msg._id || `msg-${i}`} message={msg} />
         ))}
 
-        {/* Thinking indicator while waiting for agent response */}
+        {/* ─── Dynamic AI Thinking & Loading Animation ────────────── */}
         {sending && (
-          <div className="flex gap-3 justify-start" style={{ padding: "4px 0" }}>
+          <div className="flex gap-3 justify-start animate-fade-in" style={{ padding: "6px 0" }}>
+            {/* Assistant avatar with pulse effect */}
             <div
-              className="rounded-lg flex items-center justify-center flex-shrink-0"
+              className="rounded-lg flex items-center justify-center flex-shrink-0 relative overflow-hidden"
               style={{
                 width: "30px",
                 height: "30px",
@@ -179,28 +221,42 @@ const MessageList = ({ activeConversationId, setDraftMessage }) => {
                 marginTop: "2px",
               }}
             >
-              <Sparkles size={14} style={{ color: "var(--accent)" }} />
+              <Bot size={16} style={{ color: "var(--accent)" }} className="animate-pulse" />
             </div>
+
+            {/* Thinking Bubble */}
             <div
-              className="rounded-2xl flex items-center gap-1.5"
+              className="rounded-2xl flex items-center gap-3 border shadow-sm transition-all duration-300"
               style={{
-                padding: "14px 20px",
+                padding: "10px 16px",
                 background: "var(--bg-elevated)",
+                borderColor: "var(--accent-glow)",
                 borderBottomLeftRadius: "6px",
               }}
             >
-              {[0, 1, 2].map((i) => (
-                <div
-                  key={i}
-                  className="rounded-full"
-                  style={{
-                    width: "6px",
-                    height: "6px",
-                    background: "var(--text-muted)",
-                    animation: `thinking-dot 1.2s ease-in-out ${i * 0.2}s infinite`,
-                  }}
-                />
-              ))}
+              {/* Animated dots */}
+              <div className="flex items-center gap-1">
+                {[0, 1, 2].map((i) => (
+                  <div
+                    key={i}
+                    className="rounded-full"
+                    style={{
+                      width: "6px",
+                      height: "6px",
+                      background: "var(--accent)",
+                      animation: `thinking-dot 1.2s ease-in-out ${i * 0.2}s infinite`,
+                    }}
+                  />
+                ))}
+              </div>
+
+              {/* Dynamic Status Text */}
+              <span
+                className="text-xs font-medium tracking-wide transition-all duration-300 animate-fade-in"
+                style={{ color: "var(--text-secondary)" }}
+              >
+                {thinkingText}
+              </span>
             </div>
           </div>
         )}

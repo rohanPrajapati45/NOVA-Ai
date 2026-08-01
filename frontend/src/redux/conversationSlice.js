@@ -36,6 +36,13 @@ const conversationSlice = createSlice({
         convo.title = title;
       }
     },
+    removeConversation(state, action) {
+      const conversationId = action.payload;
+      state.conversations = state.conversations.filter((c) => c._id !== conversationId);
+      if (state.activeConversationId === conversationId) {
+        state.activeConversationId = null;
+      }
+    },
   },
 });
 
@@ -46,6 +53,7 @@ export const {
   setConversationsLoading,
   resetConversations,
   updateConvoTitleInStore,
+  removeConversation,
 } = conversationSlice.actions;
 
 export default conversationSlice.reducer;

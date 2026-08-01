@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import {
   Send,
@@ -11,6 +11,8 @@ import {
   FileText,
   Presentation,
   ImageIcon,
+  X,
+  Upload,
 } from "lucide-react";
 import { addMessage, setSending, setActiveArtifact } from "../redux/messageSlice";
 import {
@@ -38,37 +40,22 @@ const AGENT_OPTIONS = [
   { key: "image", label: "Image", icon: ImageIcon },
 ];
 
+const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15MB — matches backend multer limit
+
 /**
  * Generate a clean conversation title from the user's first message.
- * Collapses spaces, trims, and truncates to a maximum of 40 characters,
- * cutting at a word boundary if possible.
  */
 const generateTitle = (text) => {
   const cleanText = text.trim().replace(/\s+/g, " ");
   if (cleanText.length <= 40) return cleanText;
-
   const sliced = cleanText.slice(0, 40);
   const lastSpaceIndex = sliced.lastIndexOf(" ");
-
-  if (lastSpaceIndex > 0) {
-    return sliced.slice(0, lastSpaceIndex) + "…";
-  }
+  if (lastSpaceIndex > 0) return sliced.slice(0, lastSpaceIndex) + "…";
   return sliced + "…";
 };
 
 /**
- * Chat input with agent selector pills, textarea, and send button.
- *
- * On send:
- * 1. If no activeConversation → auto-create one first
- * 2. Optimistic UI: immediately add user message to Redux + clear input
- * 3. Call agent service with selected agent override → add assistant response
- * 4. On failure → add error message as assistant response
- *
- * DESIGN DECISION: selectedAgentMode resets to 'auto' after every send.
- * Manual agent selection is treated as a one-off override, not a sticky preference.
- * This matches the typical usage pattern where users occasionally want to
- * force a specific agent but normally want auto-routing.
+ * Chat input with agent selector pills, file attachment, textarea, and send button.
  */
 const ChatInput = ({ draftMessage, setDraftMessage }) => {
   const dispatch = useDispatch();
@@ -80,8 +67,150 @@ const ChatInput = ({ draftMessage, setDraftMessage }) => {
   // Transient UI state — resets to 'auto' after each send
   const [selectedAgentMode, setSelectedAgentMode] = useState("auto");
 
-  const canSend = draftMessage.trim().length > 0 && !sending;
+  // File attachment state
+  const [attachedFile, setAttachedFile] = useState(null); // File object | null
+  const [attachedFilePreviewUrl, setAttachedFilePreviewUrl] = useState(null); // object URL for image thumbnails
+  const [fileError, setFileError] = useState(null); // inline error message
+  const fileInputRef = useRef(null);
 
+  // ─── Voice Input State & Ref ────────────────────────────────────
+  const [isListening, setIsListening] = useState(false);
+  const [speechError, setSpeechError] = useState(null);
+  const recognitionRef = useRef(null);
+
+  const SpeechRecognition =
+    typeof window !== "undefined"
+      ? window.SpeechRecognition || window.webkitSpeechRecognition
+      : null;
+  const isSpeechSupported = !!SpeechRecognition;
+
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {
+          // ignore cleanup stop errors
+        }
+      }
+    };
+  }, []);
+
+  const handleMicClick = () => {
+    if (!isSpeechSupported) return;
+
+    if (isListening) {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {
+          // ignore
+        }
+      }
+      setIsListening(false);
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = "en-US";
+
+      recognition.onstart = () => {
+        setIsListening(true);
+        setSpeechError(null);
+      };
+
+      recognition.onresult = (event) => {
+        let transcript = "";
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript;
+        }
+        if (transcript) {
+          setDraftMessage((prev) => {
+            if (!prev) return transcript;
+            return prev.endsWith(" ") ? prev + transcript : prev + " " + transcript;
+          });
+        }
+      };
+
+      recognition.onerror = (event) => {
+        console.error("[VoiceInput] Speech recognition error:", event.error);
+        if (event.error === "not-allowed" || event.error === "permission-denied") {
+          setSpeechError("Microphone access denied — check browser permissions");
+          setTimeout(() => setSpeechError(null), 4000);
+        } else if (event.error !== "no-speech") {
+          setSpeechError("Voice input failed — please try again");
+          setTimeout(() => setSpeechError(null), 4000);
+        }
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (err) {
+      console.error("[VoiceInput] Failed to start speech recognition:", err);
+      setSpeechError("Voice input failed to start");
+      setTimeout(() => setSpeechError(null), 4000);
+      setIsListening(false);
+    }
+  };
+
+  // Send is allowed if EITHER text OR file is present
+  const canSend = (draftMessage.trim().length > 0 || attachedFile !== null) && !sending;
+
+  // Whether a file is attached — used to dim agent selector
+  const hasFileAttached = attachedFile !== null;
+
+  // ─── File Selection Handler ─────────────────────────────────────
+  const handleFileSelect = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Reset file input so the same file can be re-selected after removal
+    event.target.value = "";
+
+    // Client-side validation: mimetype
+    if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
+      setFileError("Only image and PDF files are supported");
+      setTimeout(() => setFileError(null), 3000);
+      return;
+    }
+
+    // Client-side validation: size
+    if (file.size > MAX_FILE_SIZE) {
+      setFileError("File too large — maximum size is 15MB");
+      setTimeout(() => setFileError(null), 3000);
+      return;
+    }
+
+    setFileError(null);
+    setAttachedFile(file);
+
+    // Generate preview URL for images
+    if (file.type.startsWith("image/")) {
+      setAttachedFilePreviewUrl(URL.createObjectURL(file));
+    } else {
+      setAttachedFilePreviewUrl(null);
+    }
+  };
+
+  // ─── Remove Attached File ───────────────────────────────────────
+  const removeAttachedFile = () => {
+    if (attachedFilePreviewUrl) {
+      URL.revokeObjectURL(attachedFilePreviewUrl);
+    }
+    setAttachedFile(null);
+    setAttachedFilePreviewUrl(null);
+    setFileError(null);
+  };
+
+  // ─── Send Handler ───────────────────────────────────────────────
   const handleSend = async () => {
     if (!canSend) return;
 
@@ -95,7 +224,6 @@ const ChatInput = ({ draftMessage, setDraftMessage }) => {
         const newConvo = await createConversation();
         dispatch(addConversation(newConvo));
         dispatch(setActiveConversation(newConvo._id));
-        // Use local variable directly — Redux state update is async
         conversationId = newConvo._id;
         isNewConvo = true;
       } catch (err) {
@@ -104,9 +232,6 @@ const ChatInput = ({ draftMessage, setDraftMessage }) => {
       }
     }
 
-    // Check if title update is needed (only when title is still default)
-    // Edge case: if user literally types "New Conversation" as their first message,
-    // this will still trigger a title update (to the same string) — acceptable.
     const currentConvo = conversations.find((c) => c._id === conversationId);
     const isDefaultTitle =
       isNewConvo ||
@@ -116,8 +241,18 @@ const ChatInput = ({ draftMessage, setDraftMessage }) => {
     const agentOverride =
       selectedAgentMode === "auto" ? null : selectedAgentMode;
 
-    // Reset to auto after send (one-off override behavior)
+    // Reset to auto after send
     setSelectedAgentMode("auto");
+
+    // Capture attachment info for optimistic message display
+    const currentAttachedFile = attachedFile;
+    const currentPreviewUrl = attachedFilePreviewUrl;
+    const attachmentName = currentAttachedFile?.name || null;
+    const attachmentType = currentAttachedFile
+      ? currentAttachedFile.type.startsWith("image/")
+        ? "image"
+        : "pdf"
+      : null;
 
     // Optimistic UI: show user message immediately
     dispatch(
@@ -125,11 +260,17 @@ const ChatInput = ({ draftMessage, setDraftMessage }) => {
         role: "user",
         content: messageText,
         createdAt: new Date().toISOString(),
+        attachmentName,
+        attachmentType,
+        attachmentPreviewUrl: currentPreviewUrl || null,
       })
     );
 
-    // Clear input immediately
+    // Clear input and file immediately
     setDraftMessage("");
+    setAttachedFile(null);
+    setAttachedFilePreviewUrl(null);
+    // Don't revoke the object URL here — the optimistic message still uses it
 
     // Call agent service
     dispatch(setSending(true));
@@ -138,9 +279,10 @@ const ChatInput = ({ draftMessage, setDraftMessage }) => {
         conversationId,
         userPrompt: messageText,
         agentOverride,
+        attachedFile: currentAttachedFile,
       });
 
-      // Update user credits in Redux store if returned by agent prompt response
+      // Update user credits in Redux store if returned
       if (typeof result.remainingCredits === "number") {
         dispatch(updateUserCredits(result.remainingCredits));
       }
@@ -150,17 +292,12 @@ const ChatInput = ({ draftMessage, setDraftMessage }) => {
           role: "assistant",
           content: result.response,
           createdAt: new Date().toISOString(),
-          // Include search images for immediate rendering (optimistic)
           searchImages: result.searchImages || [],
-          // Include artifacts
           artifactTitle: result.artifactTitle || null,
           artifactFiles: result.artifactFiles || [],
-          // Image agent presigned URL
           generatedImageUrl: result.generatedImageUrl || null,
-          // PDF agent presigned URL + title
           generatedPdfUrl: result.generatedPdfUrl || null,
           pdfTitle: result.pdfTitle || null,
-          // PPT agent presigned URL + title
           generatedPptUrl: result.generatedPptUrl || null,
           pptTitle: result.pptTitle || null,
         })
@@ -177,7 +314,7 @@ const ChatInput = ({ draftMessage, setDraftMessage }) => {
       }
 
       // Trigger title update if needed
-      if (isDefaultTitle) {
+      if (isDefaultTitle && messageText) {
         const generatedTitle = generateTitle(messageText);
         updateConversationTitle({ conversationId, title: generatedTitle })
           .then(() => {
@@ -218,8 +355,13 @@ const ChatInput = ({ draftMessage, setDraftMessage }) => {
       <div className="max-w-3xl mx-auto">
         {/* ─── Agent Selector Pills ──────────────────────────────── */}
         <div
-          className="flex gap-1.5 mb-2 overflow-x-auto"
-          style={{ scrollbarWidth: "none" }}
+          className="flex gap-1.5 mb-2 overflow-x-auto items-center agent-pills-container"
+          style={{
+            scrollbarWidth: "none",
+            opacity: hasFileAttached ? 0.4 : 1,
+            pointerEvents: hasFileAttached ? "none" : "auto",
+            transition: "opacity 0.2s",
+          }}
         >
           {AGENT_OPTIONS.map((agent) => {
             const isActive = selectedAgentMode === agent.key;
@@ -256,11 +398,126 @@ const ChatInput = ({ draftMessage, setDraftMessage }) => {
                 }}
               >
                 <agent.icon size={13} />
-                <span>{agent.label}</span>
+                <span className="agent-pill-label">{agent.label}</span>
               </button>
             );
           })}
+
+          {/* Auto-routing indicator when file is attached */}
+          {hasFileAttached && (
+            <span
+              className="flex items-center gap-1 text-xs flex-shrink-0 ml-1"
+              style={{ color: "var(--accent)", fontWeight: 500, pointerEvents: "auto", opacity: 2.5 }}
+            >
+              <Upload size={11} />
+              Auto-routing based on attachment
+            </span>
+          )}
         </div>
+
+        {/* ─── Inline voice error notification */}
+        {speechError && (
+          <div
+            className="flex items-center gap-2 mb-2 px-3 py-1.5 rounded-lg text-xs"
+            style={{
+              background: "rgba(220, 38, 38, 0.1)",
+              border: "1px solid rgba(220, 38, 38, 0.2)",
+              color: "var(--danger)",
+            }}
+          >
+            <span>{speechError}</span>
+          </div>
+        )}
+
+        {/* ─── File Error Message ──────────────────────────────── */}
+        {fileError && (
+          <div
+            className="mb-2 px-3 py-1.5 rounded-lg text-xs"
+            style={{
+              background: "rgba(231, 76, 92, 0.1)",
+              color: "var(--danger)",
+              border: "1px solid rgba(231, 76, 92, 0.2)",
+            }}
+          >
+            {fileError}
+          </div>
+        )}
+
+        {/* ─── Attachment Preview Chip ─────────────────────────── */}
+        {attachedFile && (
+          <div
+            className="flex items-center gap-3 mb-2 px-3 py-2 rounded-xl"
+            style={{
+              background: "var(--bg-elevated)",
+              border: "1px solid var(--border-subtle)",
+            }}
+          >
+            {/* Thumbnail or icon */}
+            {attachedFilePreviewUrl ? (
+              <img
+                src={attachedFilePreviewUrl}
+                alt="Preview"
+                className="rounded-lg flex-shrink-0"
+                style={{
+                  width: "48px",
+                  height: "48px",
+                  objectFit: "cover",
+                }}
+              />
+            ) : (
+              <div
+                className="rounded-lg flex items-center justify-center flex-shrink-0"
+                style={{
+                  width: "48px",
+                  height: "48px",
+                  background: "rgba(220, 38, 38, 0.1)",
+                }}
+              >
+                <FileText size={22} style={{ color: "#DC2626" }} />
+              </div>
+            )}
+
+            {/* Filename */}
+            <div className="flex-1 min-w-0">
+              <div
+                className="text-sm font-medium truncate"
+                style={{ color: "var(--text-primary)" }}
+              >
+                {attachedFile.name}
+              </div>
+              <div
+                className="text-xs"
+                style={{ color: "var(--text-muted)" }}
+              >
+                {attachedFile.type.startsWith("image/") ? "Image" : "PDF"} •{" "}
+                {(attachedFile.size / 1024).toFixed(0)} KB
+              </div>
+            </div>
+
+            {/* Remove button */}
+            <button
+              onClick={removeAttachedFile}
+              className="flex items-center justify-center rounded-lg p-1.5 flex-shrink-0 cursor-pointer"
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "var(--text-muted)",
+                transition: "color 0.2s, background 0.2s",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = "var(--danger)";
+                e.currentTarget.style.background = "rgba(231, 76, 92, 0.1)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = "var(--text-muted)";
+                e.currentTarget.style.background = "transparent";
+              }}
+              title="Remove attachment"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
 
         {/* ─── Input Area ────────────────────────────────────────── */}
         <div
@@ -272,26 +529,39 @@ const ChatInput = ({ draftMessage, setDraftMessage }) => {
             transition: "border-color 0.2s, box-shadow 0.2s",
           }}
         >
-          {/* Attachment placeholder */}
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,application/pdf"
+            style={{ display: "none" }}
+            onChange={handleFileSelect}
+          />
+
+          {/* Attachment button */}
           <button
+            onClick={() => fileInputRef.current?.click()}
             className="flex items-center justify-center rounded-lg cursor-pointer flex-shrink-0"
             style={{
               width: "32px",
               height: "32px",
-              background: "transparent",
+              background: hasFileAttached ? "var(--accent-muted)" : "transparent",
               border: "none",
-              color: "var(--text-muted)",
-              transition: "color 0.2s",
+              color: hasFileAttached ? "var(--accent)" : "var(--text-muted)",
+              transition: "color 0.2s, background 0.2s",
               marginBottom: "2px",
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.color = "var(--text-secondary)";
+              if (!hasFileAttached) {
+                e.currentTarget.style.color = "var(--text-secondary)";
+              }
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.color = "var(--text-muted)";
+              if (!hasFileAttached) {
+                e.currentTarget.style.color = "var(--text-muted)";
+              }
             }}
-            title="Attach files — Coming soon"
-            onClick={() => {}}
+            title="Attach image or PDF"
           >
             <Paperclip size={16} />
           </button>
@@ -301,7 +571,7 @@ const ChatInput = ({ draftMessage, setDraftMessage }) => {
             value={draftMessage}
             onChange={(e) => setDraftMessage(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask me anything..."
+            placeholder={hasFileAttached ? "Add a question about your file (optional)…" : "Ask me anything..."}
             rows={1}
             className="flex-1 bg-transparent outline-none resize-none custom-scrollbar"
             style={{
@@ -311,7 +581,7 @@ const ChatInput = ({ draftMessage, setDraftMessage }) => {
               lineHeight: "1.5",
               maxHeight: "120px",
               minHeight: "24px",
-              padding: "4px 0",
+              padding: "10px 0",
             }}
             onInput={(e) => {
               e.target.style.height = "auto";
@@ -330,26 +600,39 @@ const ChatInput = ({ draftMessage, setDraftMessage }) => {
             }}
           />
 
-          {/* Mic placeholder */}
+          {/* Mic voice input button */}
           <button
-            className="flex items-center justify-center rounded-lg cursor-pointer flex-shrink-0"
+            className={`flex items-center justify-center rounded-lg flex-shrink-0 ${
+              isListening ? "animate-pulse-mic cursor-pointer" : isSpeechSupported ? "cursor-pointer" : "opacity-40 cursor-not-allowed"
+            }`}
             style={{
               width: "32px",
               height: "32px",
-              background: "transparent",
-              border: "none",
-              color: "var(--text-muted)",
-              transition: "color 0.2s",
+              background: isListening ? "rgba(231, 76, 92, 0.2)" : "transparent",
+              border: isListening ? "1px solid var(--danger)" : "none",
+              color: isListening ? "var(--danger)" : "var(--text-muted)",
+              transition: "all 0.2s",
               marginBottom: "2px",
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.color = "var(--text-secondary)";
+              if (!isListening && isSpeechSupported) {
+                e.currentTarget.style.color = "var(--text-secondary)";
+              }
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.color = "var(--text-muted)";
+              if (!isListening && isSpeechSupported) {
+                e.currentTarget.style.color = "var(--text-muted)";
+              }
             }}
-            title="Voice input — Coming soon"
-            onClick={() => {}}
+            title={
+              !isSpeechSupported
+                ? "Voice input isn't supported in this browser"
+                : isListening
+                ? "Click to stop recording"
+                : "Click to record voice prompt"
+            }
+            onClick={handleMicClick}
+            disabled={!isSpeechSupported}
           >
             <Mic size={16} />
           </button>

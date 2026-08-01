@@ -5,20 +5,26 @@ import {
   PanelLeftClose,
   SquarePen,
   MessageSquare,
-  CreditCard,
   Coins,
   LogOut,
-  MessagesSquare,
+  Sun,
+  Moon,
+  Trash2,
+  Check,
+  X,
 } from "lucide-react";
+import { useTheme } from "../context/ThemeContext";
 import { clearUser } from "../redux/userSlice";
 import {
   setConversations,
   addConversation,
   setActiveConversation,
-  resetConversations,
+  removeConversation,
 } from "../redux/conversationSlice";
+import { clearMessages } from "../redux/messageSlice";
 import { getConversations } from "../features/getConversations";
 import { createConversation } from "../features/createConversation";
+import { deleteConversation as deleteConversationApi } from "../features/deleteConversation";
 import { logout } from "../features/logout";
 
 /**
@@ -56,19 +62,24 @@ const formatDate = (dateStr) => {
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 };
 
-const Sidebar = ({ onOpenBilling }) => {
+const Sidebar = ({ onOpenBilling, isMobileMode = false, onMobileClose }) => {
   const dispatch = useDispatch();
+  const { theme, toggleTheme } = useTheme();
   const { user } = useSelector((state) => state.user);
   const { conversations, activeConversationId, loading } = useSelector(
     (state) => state.conversation
   );
 
+  // In mobile overlay mode, sidebar is always expanded (never collapsed)
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [creatingChat, setCreatingChat] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [imgError, setImgError] = useState(false);
+  const [deletingConvoId, setDeletingConvoId] = useState(null);
 
-  const userPlan = (user?.plan || "FREE").toUpperCase();
+  // Force expanded in mobile mode
+  const effectiveCollapsed = isMobileMode ? false : isCollapsed;
+
   const userCredits = typeof user?.credits === "number" ? user.credits : 100;
 
   // ─── Fetch conversations on mount ───────────────────────────────
@@ -94,230 +105,334 @@ const Sidebar = ({ onOpenBilling }) => {
   const handleNewChat = async () => {
     if (creatingChat) return;
     setCreatingChat(true);
+
     try {
-      const newConvo = await createConversation();
-      dispatch(addConversation(newConvo));
-      dispatch(setActiveConversation(newConvo._id));
+      const data = await createConversation();
+      if (data && data.conversation) {
+        dispatch(addConversation(data.conversation));
+        dispatch(setActiveConversation(data.conversation._id));
+        if (isMobileMode && onMobileClose) {
+          onMobileClose();
+        }
+      }
     } catch (err) {
-      console.error("Failed to create conversation:", err);
+      console.error("Failed to create new conversation:", err);
     } finally {
       setCreatingChat(false);
     }
   };
 
-  // ─── Logout ─────────────────────────────────────────────────────
+  // ─── Select conversation ────────────────────────────────────────
+  const handleSelectConversation = (id) => {
+    dispatch(setActiveConversation(id));
+    if (isMobileMode && onMobileClose) {
+      onMobileClose();
+    }
+  };
+
+  // ─── Delete conversation handler (Optimistic UI) ───────────────
+  const handleDeleteConfirm = async (convoId) => {
+    const previousConversations = [...conversations];
+    setDeletingConvoId(null);
+
+    // If deleting currently active conversation, reset active conversation and messages
+    if (convoId === activeConversationId) {
+      dispatch(setActiveConversation(null));
+      dispatch(clearMessages());
+    }
+
+    // Optimistic Redux removal
+    dispatch(removeConversation(convoId));
+
+    try {
+      await deleteConversationApi(convoId);
+    } catch (err) {
+      console.error("[Sidebar] Failed to delete conversation:", err);
+      // Rollback on failure
+      dispatch(setConversations(previousConversations));
+    }
+  };
+
+  // ─── Logout handler ─────────────────────────────────────────────
   const handleLogout = async () => {
     if (loggingOut) return;
     setLoggingOut(true);
     try {
       await logout();
-    } catch (err) {
-      console.error("Logout API failed:", err);
-    } finally {
       dispatch(clearUser());
       dispatch(resetConversations());
+    } catch (err) {
+      console.error("Logout failed:", err);
+    } finally {
       setLoggingOut(false);
     }
   };
 
+  const initials = getInitials(user?.name || user?.email);
   const avatarColor = user ? getAvatarColor(user.name || user.email || "") : "#6C5CE7";
-  const initials = user ? getInitials(user.name) : "U";
 
   return (
     <aside
-      className="sidebar-transition flex flex-col h-full overflow-hidden"
+      className={`h-full flex flex-col flex-shrink-0 ${
+        isMobileMode ? "w-full" : "sidebar-transition"
+      }`}
       style={{
-        width: isCollapsed ? "var(--sidebar-collapsed)" : "var(--sidebar-width)",
-        minWidth: isCollapsed ? "var(--sidebar-collapsed)" : "var(--sidebar-width)",
+        width: isMobileMode
+          ? "100%"
+          : effectiveCollapsed
+          ? "var(--sidebar-collapsed)"
+          : "var(--sidebar-width)",
         backgroundColor: "var(--bg-surface)",
         borderRight: "1px solid var(--border-subtle)",
+        userSelect: "none",
       }}
     >
-      {/* ─── Header ──────────────────────────────────────────────── */}
+      {/* ─── Header ─────────────────────────────────────────────── */}
       <div
-        className="flex items-center gap-3 px-4 py-4"
-        style={{ minHeight: "56px" }}
+        className="flex items-center justify-between px-3 py-3"
+        style={{
+          height: "56px",
+          borderBottom: "1px solid var(--border-subtle)",
+        }}
       >
-        <button
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          className="flex items-center justify-center rounded-lg cursor-pointer"
-          style={{
-            width: "32px",
-            height: "32px",
-            color: "var(--text-secondary)",
-            background: "transparent",
-            border: "none",
-            transition: "background 0.2s, color 0.2s",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "var(--bg-hover)";
-            e.currentTarget.style.color = "var(--text-primary)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "transparent";
-            e.currentTarget.style.color = "var(--text-secondary)";
-          }}
-          title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          {isCollapsed ? <PanelLeft size={18} /> : <PanelLeftClose size={18} />}
-        </button>
+        {/* Toggle Collapse button (desktop only) */}
+        {!isMobileMode && (
+          <button
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className="flex items-center justify-center rounded-lg cursor-pointer transition-colors"
+            style={{
+              width: "36px",
+              height: "36px",
+              color: "var(--text-secondary)",
+              background: "transparent",
+              border: "none",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "var(--bg-hover)";
+              e.currentTarget.style.color = "var(--text-primary)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent";
+              e.currentTarget.style.color = "var(--text-secondary)";
+            }}
+            title={effectiveCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {effectiveCollapsed ? <PanelLeft size={18} /> : <PanelLeftClose size={18} />}
+          </button>
+        )}
 
-        {!isCollapsed && (
+        {/* Mobile close button */}
+        {isMobileMode && (
+          <button
+            onClick={onMobileClose}
+            className="flex items-center justify-center rounded-lg cursor-pointer"
+            style={{
+              width: "36px",
+              height: "36px",
+              color: "var(--text-secondary)",
+              background: "transparent",
+              border: "none",
+            }}
+          >
+            <PanelLeftClose size={18} />
+          </button>
+        )}
+
+        {/* App Title (visible when expanded) */}
+        {!effectiveCollapsed && (
           <div className="flex items-center gap-2 animate-fade-in">
             <span
-              className="font-semibold text-sm tracking-wide"
-              style={{ color: "var(--text-primary)" }}
-            >
-              NOVA AI
-            </span>
-            <span
-              className="text-xs px-2 py-0.5 rounded-full font-medium"
+              className="font-bold tracking-tight"
               style={{
-                background: "var(--accent-muted)",
-                color: "var(--accent)",
-                fontSize: "10px",
-                letterSpacing: "0.5px",
+                fontSize: "15px",
+                color: "var(--text-primary)",
+                fontFamily: "var(--sans)",
               }}
             >
-              {userPlan}
+              NOVA <span style={{ color: "var(--accent)" }}>AI</span>
             </span>
           </div>
         )}
-      </div>
 
-      {/* ─── New Chat Button ─────────────────────────────────────── */}
-      <div className="px-3 mb-2">
+        {/* New Chat Button */}
         <button
           onClick={handleNewChat}
           disabled={creatingChat}
-          className="flex items-center gap-2 rounded-xl cursor-pointer w-full"
+          className="flex items-center justify-center rounded-lg cursor-pointer transition-all"
           style={{
-            padding: isCollapsed ? "10px 0" : "10px 14px",
-            justifyContent: isCollapsed ? "center" : "flex-start",
-            background: "var(--accent)",
+            width: "36px",
+            height: "36px",
+            backgroundColor: "var(--accent)",
             color: "#FFFFFF",
             border: "none",
-            fontSize: "13px",
-            fontWeight: "500",
-            transition: "background 0.2s, transform 0.1s, box-shadow 0.2s",
-            boxShadow: "0 2px 8px var(--accent-glow)",
-            opacity: creatingChat ? 0.7 : 1,
+            opacity: creatingChat ? 0.6 : 1,
           }}
           onMouseEnter={(e) => {
-            if (!creatingChat) {
-              e.currentTarget.style.background = "var(--accent-hover)";
-              e.currentTarget.style.boxShadow = "0 4px 16px var(--accent-glow)";
-            }
+            if (!creatingChat) e.currentTarget.style.backgroundColor = "var(--accent-hover)";
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = "var(--accent)";
-            e.currentTarget.style.boxShadow = "0 2px 8px var(--accent-glow)";
+            if (!creatingChat) e.currentTarget.style.backgroundColor = "var(--accent)";
           }}
-          onMouseDown={(e) => {
-            if (!creatingChat) e.currentTarget.style.transform = "scale(0.97)";
-          }}
-          onMouseUp={(e) => {
-            e.currentTarget.style.transform = "scale(1)";
-          }}
+          title="New Chat"
         >
-          <SquarePen size={16} />
-          {!isCollapsed && <span>{creatingChat ? "Creating..." : "New Chat"}</span>}
+          <SquarePen size={18} />
         </button>
       </div>
 
-      {/* ─── Conversation List ───────────────────────────────────── */}
-      {!isCollapsed && (
-        <div
-          className="flex-1 overflow-y-auto custom-scrollbar px-3 py-1 animate-fade-in"
-          style={{ minHeight: 0 }}
-        >
+      {/* ─── Conversations List ───────────────────────────────────── */}
+      {!effectiveCollapsed && (
+        <div className="flex-1 overflow-y-auto px-2 py-2 custom-scrollbar">
           {loading ? (
-            /* Loading shimmer */
-            <div className="flex flex-col gap-2 mt-1">
-              {[...Array(5)].map((_, i) => (
-                <div
-                  key={i}
-                  className="skeleton-shimmer"
-                  style={{
-                    height: "40px",
-                    borderRadius: "10px",
-                    opacity: 1 - i * 0.15,
-                  }}
-                />
+            /* Loading skeletons */
+            <div className="flex flex-col gap-2 p-1">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-10 skeleton-shimmer" />
               ))}
             </div>
           ) : conversations.length === 0 ? (
             /* Empty state */
             <div
-              className="flex flex-col items-center justify-center gap-3 py-12 animate-fade-in"
+              className="flex flex-col items-center justify-center py-12 px-4 text-center"
               style={{ color: "var(--text-muted)" }}
             >
-              <MessagesSquare size={32} strokeWidth={1.2} />
-              <p className="text-xs text-center" style={{ maxWidth: "160px", lineHeight: "1.5" }}>
-                No recent conversations. Click "New Chat" to get started.
+              <MessageSquare size={28} className="mb-2 opacity-40" />
+              <p className="text-xs font-medium" style={{ margin: 0 }}>
+                No recent conversations
+              </p>
+              <p className="text-[11px] opacity-60 mt-1" style={{ margin: 0 }}>
+                Click the icon above to start a new chat
               </p>
             </div>
           ) : (
-            /* Conversation rows */
-            <div className="flex flex-col gap-0.5 mt-1">
+            /* Conversation items */
+            <div className="flex flex-col gap-0.5">
               {conversations.map((convo) => {
                 const isActive = convo._id === activeConversationId;
-                return (
-                  <button
-                    key={convo._id}
-                    onClick={() => dispatch(setActiveConversation(convo._id))}
-                    className="flex items-center gap-2.5 rounded-lg text-left w-full cursor-pointer"
-                    style={{
-                      padding: "9px 12px",
-                      background: isActive ? "var(--bg-active)" : "transparent",
-                      border: "none",
-                      borderLeft: isActive
-                        ? "3px solid var(--accent)"
-                        : "3px solid transparent",
-                      color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
-                      transition: "all 0.15s ease",
-                      fontSize: "13px",
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isActive) {
-                        e.currentTarget.style.background = "var(--bg-hover)";
-                        e.currentTarget.style.color = "var(--text-primary)";
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isActive) {
-                        e.currentTarget.style.background = "transparent";
-                        e.currentTarget.style.color = "var(--text-secondary)";
-                      }
-                    }}
-                  >
-                    <MessageSquare
-                      size={14}
+                const isDeletingThis = deletingConvoId === convo._id;
+
+                if (isDeletingThis) {
+                  /* Inline Delete Confirmation */
+                  return (
+                    <div
+                      key={convo._id}
+                      className="flex items-center justify-between px-3 py-2 rounded-xl animate-fade-in"
                       style={{
-                        flexShrink: 0,
-                        color: isActive ? "var(--accent)" : "var(--text-muted)",
+                        background: "rgba(220, 38, 38, 0.12)",
+                        border: "1px solid rgba(220, 38, 38, 0.3)",
                       }}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p
-                        className="truncate font-medium"
-                        style={{ fontSize: "13px", margin: 0 }}
-                      >
-                        {convo.title || "New Conversation"}
-                      </p>
-                      <p
-                        className="truncate"
-                        style={{
-                          fontSize: "10px",
-                          margin: 0,
-                          color: "var(--text-muted)",
-                          marginTop: "2px",
-                        }}
-                      >
-                        {formatDate(convo.lastMessageAt || convo.createdAt)}
-                      </p>
+                    >
+                      <span className="text-xs font-medium" style={{ color: "var(--danger)" }}>
+                        Delete this chat?
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleDeleteConfirm(convo._id)}
+                          className="p-1 rounded-md cursor-pointer transition-colors"
+                          style={{
+                            background: "var(--danger)",
+                            color: "#FFFFFF",
+                            border: "none",
+                          }}
+                          title="Confirm Delete"
+                        >
+                          <Check size={14} />
+                        </button>
+                        <button
+                          onClick={() => setDeletingConvoId(null)}
+                          className="p-1 rounded-md cursor-pointer transition-colors"
+                          style={{
+                            background: "var(--bg-hover)",
+                            color: "var(--text-secondary)",
+                            border: "none",
+                          }}
+                          title="Cancel"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
                     </div>
-                  </button>
+                  );
+                }
+
+                return (
+                  <div
+                    key={convo._id}
+                    className="group relative flex items-center w-full"
+                  >
+                    <button
+                      onClick={() => handleSelectConversation(convo._id)}
+                      className="flex items-center gap-2.5 w-full text-left rounded-xl transition-all cursor-pointer truncate"
+                      style={{
+                        padding: "8px 10px",
+                        paddingRight: "32px",
+                        backgroundColor: isActive ? "var(--bg-elevated)" : "transparent",
+                        borderLeft: isActive ? "3px solid var(--accent)" : "3px solid transparent",
+                        color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
+                        fontSize: "13px",
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isActive) {
+                          e.currentTarget.style.background = "var(--bg-hover)";
+                          e.currentTarget.style.color = "var(--text-primary)";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isActive) {
+                          e.currentTarget.style.background = "transparent";
+                          e.currentTarget.style.color = "var(--text-secondary)";
+                        }
+                      }}
+                    >
+                      <MessageSquare
+                        size={14}
+                        style={{
+                          flexShrink: 0,
+                          color: isActive ? "var(--accent)" : "var(--text-muted)",
+                        }}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="truncate font-medium" style={{ fontSize: "13px", margin: 0 }}>
+                          {convo.title || "New Conversation"}
+                        </p>
+                        <p
+                          className="truncate"
+                          style={{
+                            fontSize: "10px",
+                            margin: 0,
+                            color: "var(--text-muted)",
+                            marginTop: "2px",
+                          }}
+                        >
+                          {formatDate(convo.lastMessageAt || convo.createdAt)}
+                        </p>
+                      </div>
+                    </button>
+
+                    {/* Trash icon (visible on hover) */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeletingConvoId(convo._id);
+                      }}
+                      className="absolute right-2 opacity-0 group-hover:opacity-100 p-1.5 rounded-lg cursor-pointer transition-all"
+                      style={{
+                        color: "var(--text-muted)",
+                        background: "transparent",
+                        border: "none",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.color = "var(--danger)";
+                        e.currentTarget.style.background = "rgba(220, 38, 38, 0.1)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.color = "var(--text-muted)";
+                        e.currentTarget.style.background = "transparent";
+                      }}
+                      title="Delete conversation"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -326,7 +441,7 @@ const Sidebar = ({ onOpenBilling }) => {
       )}
 
       {/* Spacer when collapsed to push footer down */}
-      {isCollapsed && <div className="flex-1" />}
+      {effectiveCollapsed && <div className="flex-1" />}
 
       {/* ─── Footer ──────────────────────────────────────────────── */}
       <div
@@ -376,7 +491,7 @@ const Sidebar = ({ onOpenBilling }) => {
           )}
 
           {/* User info + action icons */}
-          {!isCollapsed && (
+          {!effectiveCollapsed && (
             <div className="flex items-center flex-1 min-w-0 gap-2 animate-fade-in">
               <div className="flex-1 min-w-0">
                 <p
@@ -401,6 +516,29 @@ const Sidebar = ({ onOpenBilling }) => {
                   {user?.email}
                 </p>
               </div>
+
+              {/* Theme Toggle Button */}
+              <button
+                onClick={toggleTheme}
+                className="flex items-center justify-center rounded-lg cursor-pointer transition-colors"
+                style={{
+                  width: "28px",
+                  height: "28px",
+                  background: "var(--bg-elevated)",
+                  border: "1px solid var(--border-subtle)",
+                  color: "var(--text-primary)",
+                  flexShrink: 0,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "var(--bg-hover)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "var(--bg-elevated)";
+                }}
+                title={theme === "dark" ? "Switch to Light mode" : "Switch to Dark mode"}
+              >
+                {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
+              </button>
 
               {/* Coins / Billing button */}
               <button
@@ -456,9 +594,24 @@ const Sidebar = ({ onOpenBilling }) => {
             </div>
           )}
 
-          {/* Collapsed: show Coins icon button & logout icon */}
-          {isCollapsed && (
+          {/* Collapsed: show Theme toggle, Coins button, & logout icon */}
+          {effectiveCollapsed && (
             <div className="flex flex-col items-center gap-2">
+              <button
+                onClick={toggleTheme}
+                className="flex items-center justify-center rounded-lg cursor-pointer"
+                style={{
+                  width: "28px",
+                  height: "28px",
+                  background: "var(--bg-elevated)",
+                  border: "1px solid var(--border-subtle)",
+                  color: "var(--text-primary)",
+                }}
+                title={theme === "dark" ? "Switch to Light mode" : "Switch to Dark mode"}
+              >
+                {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
+              </button>
+
               <button
                 onClick={onOpenBilling}
                 className="flex flex-col items-center justify-center rounded-lg cursor-pointer p-1.5 relative"

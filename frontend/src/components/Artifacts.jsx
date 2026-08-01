@@ -12,6 +12,7 @@ import {
   FileText,
   FileJson,
   Terminal,
+  X,
 } from "lucide-react";
 import {
   closeArtifactPanel,
@@ -24,8 +25,10 @@ const LANGUAGE_MAP = {
   css: "css",
   javascript: "javascript",
   js: "javascript",
+  jsx: "javascript",
   typescript: "typescript",
   ts: "typescript",
+  tsx: "typescript",
   python: "python",
   py: "python",
   json: "json",
@@ -41,32 +44,75 @@ const LANGUAGE_MAP = {
   shell: "shell",
   sh: "shell",
   bash: "shell",
+  scss: "scss",
+  sass: "scss",
+  less: "less",
+  yaml: "yaml",
+  yml: "yaml",
+  xml: "xml",
+  dockerfile: "dockerfile",
+  makefile: "makefile",
 };
 
 // Map languages to file icons
 const getFileIcon = (lang) => {
   const l = (lang || "").toLowerCase();
   if (l === "html") return <FileCode2 size={14} className="text-orange-500" />;
-  if (l === "css") return <FileCode2 size={14} className="text-blue-400" />;
-  if (l === "javascript" || l === "js") return <FileCode2 size={14} className="text-yellow-400" />;
+  if (l === "css" || l === "scss" || l === "sass" || l === "less") return <FileCode2 size={14} className="text-blue-400" />;
+  if (["javascript", "js", "jsx", "typescript", "ts", "tsx"].includes(l)) return <FileCode2 size={14} className="text-yellow-400" />;
   if (l === "python" || l === "py") return <Terminal size={14} className="text-green-400" />;
   if (l === "json") return <FileJson size={14} className="text-purple-400" />;
   return <FileText size={14} className="text-gray-400" />;
 };
 
 /**
- * Normalizes code content strings: handles literal \n / \t escapes if unescaped
+ * Normalizes code content strings: handles multiple levels of escape sequences
  * from JSON responses, ensuring clean multi-line code display.
+ * Also handles single-line code detection with basic auto-formatting.
  */
-const formatCodeContent = (content) => {
+const formatCodeContent = (content, language) => {
   if (!content || typeof content !== "string") return "";
-  return content
+
+  let result = content
+    // Doubled escaped sequences (from nested JSON stringification)
+    .replace(/\\\\r\\\\n/g, "\n")
+    .replace(/\\\\n/g, "\n")
+    .replace(/\\\\t/g, "  ")
+    // Single escaped sequences
     .replace(/\\r\\n/g, "\n")
     .replace(/\\n/g, "\n")
-    .replace(/\\t/g, "  ");
+    .replace(/\\t/g, "  ")
+    // Escaped quotes
+    .replace(/\\"/g, '"')
+    .replace(/\\'/g, "'")
+    // Strip stray carriage returns
+    .replace(/\r/g, "");
+
+  // Safety net: if the entire content is on one line (no newlines found),
+  // attempt basic formatting based on language
+  if (!result.includes("\n") && result.length > 100) {
+    const lang = (language || "").toLowerCase();
+    if (lang === "html") {
+      result = result
+        .replace(/></g, ">\n<")
+        .replace(/([{;])\s*/g, "$1\n");
+    } else if (lang === "css") {
+      result = result
+        .replace(/\{/g, " {\n  ")
+        .replace(/;\s*/g, ";\n  ")
+        .replace(/\}/g, "\n}\n");
+    } else if (["javascript", "js", "jsx"].includes(lang)) {
+      result = result
+        .replace(/\{/g, " {\n  ")
+        .replace(/;\s*/g, ";\n")
+        .replace(/\}/g, "\n}\n");
+    }
+  }
+
+  return result;
 };
 
-const Artifacts = () => {
+const Artifacts = ({ isMobile = false }) => {
   const dispatch = useDispatch();
   const { activeArtifact, isArtifactPanelOpen } = useSelector(
     (state) => state.message
@@ -106,15 +152,6 @@ const Artifacts = () => {
 
   /**
    * CONSTRUCT RUNNABLE HTML DOCUMENT (srcDoc)
-   *
-   * To preview the generated application in an iframe:
-   * 1. We locate the primary HTML file in the files array.
-   * 2. We extract the content of any accompanying CSS and JS files.
-   * 3. We construct a single unified HTML string by:
-   *    - Inlining style.css inside a <style> block in the <head>
-   *    - Inlining script.js inside a <script> block before the closing </body> tag
-   *    - Stripping/updating external relative references to styled files
-   *      so they do not fail to load from relative domains.
    */
   const buildSrcDoc = () => {
     const htmlFile = activeArtifact.files.find(
@@ -126,13 +163,11 @@ const Artifacts = () => {
 
     let docContent = htmlFile.content;
 
-    // Find style files
     const cssFiles = activeArtifact.files.filter(
       (f) =>
         (f.language || "").toLowerCase() === "css" ||
         (f.filename || "").endsWith(".css")
     );
-    // Find script files
     const jsFiles = activeArtifact.files.filter(
       (f) =>
         (f.language || "").toLowerCase() === "javascript" ||
@@ -140,7 +175,6 @@ const Artifacts = () => {
         (f.filename || "").endsWith(".js")
     );
 
-    // Inline CSS styles
     if (cssFiles.length > 0) {
       const stylesInline = cssFiles
         .map((f) => `/* Inlined from ${f.filename} */\n${f.content}`)
@@ -154,7 +188,6 @@ const Artifacts = () => {
       }
     }
 
-    // Inline JS scripts
     if (jsFiles.length > 0) {
       const scriptsInline = jsFiles
         .map((f) => `// Inlined from ${f.filename}\n${f.content}`)
@@ -171,6 +204,145 @@ const Artifacts = () => {
     return docContent;
   };
 
+  // ─── Determine panel width based on viewport ────────────────────
+  const getPanelWidth = () => {
+    if (isMobile) return "100vw";
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+      return Math.min(400, window.innerWidth * 0.45);
+    }
+    return 500;
+  };
+
+  // ─── Mobile: render as full-screen overlay ──────────────────────
+  if (isMobile) {
+    if (!isArtifactPanelOpen) return null; // No collapsed tab on mobile
+
+    return (
+      <div className="artifact-mobile-overlay" style={{ background: "var(--bg-surface)" }}>
+        {/* Header */}
+        <div
+          className="flex flex-col px-4 pt-4 pb-3 gap-3"
+          style={{ borderBottom: "1px solid var(--border-subtle)" }}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5 overflow-hidden">
+              <Code2 size={16} style={{ color: "var(--accent)", flexShrink: 0 }} />
+              <span className="font-semibold text-sm truncate" style={{ color: "var(--text-primary)" }}>
+                {activeArtifact.title}
+              </span>
+            </div>
+            <button
+              onClick={() => dispatch(closeArtifactPanel())}
+              className="p-2 rounded-lg cursor-pointer"
+              style={{ color: "var(--text-muted)", background: "var(--bg-hover)", border: "none" }}
+              title="Close"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          {/* View Mode Toggle */}
+          {hasHtml && (
+            <div className="flex p-0.5 rounded-lg w-fit" style={{ background: "var(--bg-elevated)" }}>
+              <button
+                onClick={() => setViewMode("code")}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-all ${viewMode === "code" ? "shadow-sm" : "opacity-60"}`}
+                style={{ background: viewMode === "code" ? "var(--accent)" : "transparent", color: viewMode === "code" ? "#ffffff" : "var(--text-secondary)" }}
+              >
+                <Code2 size={13} /> Code
+              </button>
+              <button
+                onClick={() => setViewMode("preview")}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-all ${viewMode === "preview" ? "shadow-sm" : "opacity-60"}`}
+                style={{ background: viewMode === "preview" ? "var(--accent)" : "transparent", color: viewMode === "preview" ? "#ffffff" : "var(--text-secondary)" }}
+              >
+                <Play size={13} /> Preview
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Body */}
+        {viewMode === "code" ? (
+          <div className="flex-1 flex flex-col min-h-0">
+            {activeArtifact.files?.length > 1 && (
+              <div
+                className="flex items-center gap-1 px-3 py-1.5 overflow-x-auto custom-scrollbar"
+                style={{ background: "var(--bg-base)", borderBottom: "1px solid var(--border-subtle)" }}
+              >
+                {activeArtifact.files.map((file, index) => {
+                  const isActive = index === activeFileIndex;
+                  return (
+                    <button
+                      key={file.filename}
+                      onClick={() => setActiveFileIndex(index)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors whitespace-nowrap ${isActive ? "font-medium" : "opacity-60"}`}
+                      style={{
+                        background: isActive ? "var(--bg-elevated)" : "transparent",
+                        color: isActive ? "var(--accent)" : "var(--text-secondary)",
+                        border: isActive ? "1px solid var(--border-subtle)" : "1px solid transparent",
+                      }}
+                    >
+                      {getFileIcon(file.language)}
+                      {file.filename}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <div className="flex-1 relative min-h-0">
+              {currentFile ? (
+                <>
+                  <Editor
+                    height="100%"
+                    language={LANGUAGE_MAP[currentFile.language?.toLowerCase()] || "plaintext"}
+                    value={formatCodeContent(currentFile.content, currentFile.language)}
+                    theme="vs-dark"
+                    options={{
+                      readOnly: true,
+                      minimap: { enabled: false },
+                      fontSize: 12,
+                      fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace",
+                      lineHeight: 18,
+                      tabSize: 2,
+                      insertSpaces: true,
+                      wordWrap: "on",
+                      scrollBeyondLastLine: false,
+                      automaticLayout: true,
+                      folding: true,
+                      renderLineHighlight: "all",
+                      lineNumbersMinChars: 3,
+                      padding: { top: 10, bottom: 10 },
+                      bracketPairColorization: { enabled: true },
+                      guides: { indentation: true, bracketPairs: true },
+                    }}
+                  />
+                  <button
+                    onClick={handleCopy}
+                    className="absolute top-3 right-3 p-1.5 rounded-lg border shadow-md transition-all flex items-center justify-center"
+                    style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)", color: "var(--text-secondary)" }}
+                    title="Copy Code"
+                  >
+                    {copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+                  </button>
+                </>
+              ) : (
+                <div className="flex items-center justify-center h-full text-xs" style={{ color: "var(--text-muted)" }}>
+                  No file content available
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="flex-1 w-full h-full min-h-0 bg-white relative">
+            <iframe title="live-preview" srcDoc={buildSrcDoc()} sandbox="allow-scripts" className="w-full h-full border-none" />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ─── DESKTOP rendering ──────────────────────────────────────────
   return (
     <AnimatePresence initial={false}>
       {!isArtifactPanelOpen ? (
@@ -193,7 +365,6 @@ const Artifacts = () => {
             <Code2 size={18} style={{ color: "var(--accent)" }} />
           </div>
 
-          {/* Rotated vertical text title */}
           <div
             className="flex-1 flex items-center justify-center font-medium text-xs tracking-wider"
             style={{
@@ -218,7 +389,7 @@ const Artifacts = () => {
         <motion.div
           key="expanded"
           initial={{ width: 0, opacity: 0 }}
-          animate={{ width: 500, opacity: 1 }}
+          animate={{ width: getPanelWidth(), opacity: 1 }}
           exit={{ width: 0, opacity: 0 }}
           transition={{ type: "spring", stiffness: 300, damping: 30 }}
           className="flex flex-col h-full border-l overflow-hidden shadow-2xl relative"
@@ -247,15 +418,15 @@ const Artifacts = () => {
               </div>
               <button
                 onClick={() => dispatch(closeArtifactPanel())}
-                className="p-1.5 rounded-lg hover:bg-opacity-10 hover:bg-white transition-colors"
-                style={{ color: "var(--text-muted)" }}
+                className="p-1.5 rounded-lg hover:bg-opacity-10 hover:bg-white transition-colors cursor-pointer"
+                style={{ color: "var(--text-muted)", border: "none", background: "transparent" }}
                 title="Collapse Panel"
               >
                 <PanelRightClose size={16} />
               </button>
             </div>
 
-            {/* View Mode Toggle Controls (Segmented Control) */}
+            {/* View Mode Toggle */}
             {hasHtml && (
               <div
                 className="flex p-0.5 rounded-lg w-fit"
@@ -264,9 +435,7 @@ const Artifacts = () => {
                 <button
                   onClick={() => setViewMode("code")}
                   className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-all ${
-                    viewMode === "code"
-                      ? "shadow-sm"
-                      : "opacity-60 hover:opacity-100"
+                    viewMode === "code" ? "shadow-sm" : "opacity-60 hover:opacity-100"
                   }`}
                   style={{
                     background: viewMode === "code" ? "var(--accent)" : "transparent",
@@ -279,9 +448,7 @@ const Artifacts = () => {
                 <button
                   onClick={() => setViewMode("preview")}
                   className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-all ${
-                    viewMode === "preview"
-                      ? "shadow-sm"
-                      : "opacity-60 hover:opacity-100"
+                    viewMode === "preview" ? "shadow-sm" : "opacity-60 hover:opacity-100"
                   }`}
                   style={{
                     background: viewMode === "preview" ? "var(--accent)" : "transparent",
@@ -295,7 +462,7 @@ const Artifacts = () => {
             )}
           </div>
 
-          {/* Body Content based on View Mode */}
+          {/* Body Content */}
           {viewMode === "code" ? (
             <div className="flex-1 flex flex-col min-h-0">
               {/* File Tabs Row */}
@@ -342,7 +509,7 @@ const Artifacts = () => {
                         LANGUAGE_MAP[currentFile.language?.toLowerCase()] ||
                         "plaintext"
                       }
-                      value={formatCodeContent(currentFile.content)}
+                      value={formatCodeContent(currentFile.content, currentFile.language)}
                       theme="vs-dark"
                       options={{
                         readOnly: true,
@@ -366,7 +533,7 @@ const Artifacts = () => {
                     {/* Floating Copy Button */}
                     <button
                       onClick={handleCopy}
-                      className="absolute top-3 right-3 p-1.5 rounded-lg border shadow-md transition-all flex items-center justify-center"
+                      className="absolute top-3 right-3 p-1.5 rounded-lg border shadow-md transition-all flex items-center justify-center cursor-pointer"
                       style={{
                         background: "var(--bg-surface)",
                         borderColor: "var(--border-subtle)",

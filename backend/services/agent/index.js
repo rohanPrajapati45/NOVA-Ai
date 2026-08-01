@@ -15,8 +15,16 @@ const app = express();
 // Request logging
 app.use(morgan("dev"));
 
-// Parse JSON request bodies
-app.use(express.json());
+// Parse JSON request bodies — ONLY for requests that are actually JSON.
+// Multipart requests (file uploads) are parsed by multer in the route layer,
+// and express.json() must NOT consume them first.
+app.use((req, res, next) => {
+  if (req.is("multipart/form-data")) {
+    // Skip JSON parsing for multipart — multer will handle it
+    return next();
+  }
+  express.json()(req, res, next);
+});
 
 // ─── Routes ─────────────────────────────────────────────────────────
 

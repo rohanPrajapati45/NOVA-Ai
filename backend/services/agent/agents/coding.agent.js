@@ -52,6 +52,8 @@ RULES:
 - Match the "language" field to Monaco editor language identifiers: "html", "css", "javascript", "python", "typescript", "java", "cpp", "c", "rust", "go", "json", "markdown", etc.
 - Write COMPLETE, WORKING, PRODUCTION-QUALITY code — not stubs or placeholders.
 - INDENTATION AND NEWLINES (CRITICAL): The "content" field of each file MUST be formatted properly with standard code indentation (2 or 4 spaces) and real newline characters (\n). Do NOT compress, minify, or output the code as a single line. It must be highly readable and look like professional source code in an IDE.
+- STRICT FILE ISOLATION: Put ONLY HTML code in .html files, ONLY CSS code in .css files, and ONLY JavaScript code in .js files. NEVER mix internal <style> or inline <script> inside the HTML file when generating multi-file web projects.
+- NO ESCAPED SEQUENCES: Do NOT output double-escaped newline literal text (like \\\\n). Use raw, real newlines inside JSON strings.
 - For web projects: use modern CSS (flexbox/grid, CSS variables, smooth animations, gradients, premium dark-mode design). Make it look stunning.
 - For images in HTML: use https://picsum.photos/WIDTH/HEIGHT?random=N for placeholder images (e.g. https://picsum.photos/400/300?random=1). These are real, freely hotlinkable photo placeholders.
 - Include proper error handling and edge cases.

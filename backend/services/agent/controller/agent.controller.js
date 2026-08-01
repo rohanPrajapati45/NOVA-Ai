@@ -6,15 +6,20 @@ import { getSignedUrlForKey } from "../../../shared/s3/getFromS3.js";
 import { deductCredits } from "../utils/deductCredits.js";
 
 // Valid agent names for server-side validation of agentOverride
+// NOTE: 'imageAnalyzer' and 'pdfRag' are INTERNAL ONLY — not valid overrides
 const VALID_AGENTS = ["chat", "search", "coding", "pdf", "ppt", "image"];
 
 /**
  * POST /prompt
  * Fetches recent chat history, checks credits, invokes the multi-agent graph,
  * saves messages to chat service (MongoDB), updates Redis memory cache, deducts credits, and returns response.
+ *
+ * Supports optional file attachment (req.file from multer) which auto-routes
+ * to hidden agents (imageAnalyzer or pdfRag) via the router's file-type priority.
  */
 export const handlePrompt = async (req, res) => {
   try {
+    console.log(`[handlePrompt] Received request. Has file: ${!!req.file}, Content-Type: ${req.headers["content-type"]}`);
     const { userPrompt, conversationId, agentOverride } = req.body;
     const userId = req.userId;
 
@@ -22,8 +27,9 @@ export const handlePrompt = async (req, res) => {
     if (!userId) {
       return res.status(401).json({ message: "Unauthorized" });
     }
-    if (!userPrompt) {
-      return res.status(400).json({ message: "userPrompt is required" });
+    // Allow empty userPrompt IF a file is attached (user can send image/PDF with no caption)
+    if (!userPrompt && !req.file) {
+      return res.status(400).json({ message: "userPrompt is required (or attach a file)" });
     }
     if (!conversationId) {
       return res.status(400).json({ message: "conversationId is required" });
@@ -39,6 +45,29 @@ export const handlePrompt = async (req, res) => {
       );
     }
 
+    // ─── Derive file attachment metadata ───────────────────────────
+    let attachedFile = null;
+    let fileType = null;
+
+    if (req.file) {
+      attachedFile = {
+        path: req.file.path,
+        mimetype: req.file.mimetype,
+        originalname: req.file.originalname,
+      };
+
+      if (req.file.mimetype.startsWith("image/")) {
+        fileType = "image";
+      } else if (req.file.mimetype === "application/pdf") {
+        fileType = "pdf";
+      } else {
+        // Shouldn't reach here given multer's fileFilter, but handle defensively
+        return res.status(400).json({ message: "Unsupported file type" });
+      }
+
+      console.log(`[Controller] File attached: "${req.file.originalname}" (${fileType}), path: ${req.file.path}, size: ${req.file.size} bytes`);
+    }
+
     // ─── 1. Fetch recent conversation history ─────────────────────
     const chatHistory = await getConversationHistory(conversationId, userId);
 
@@ -47,7 +76,7 @@ export const handlePrompt = async (req, res) => {
     try {
       await chatApi.post(
         "/message",
-        { conversationId, role: "user", content: userPrompt },
+        { conversationId, role: "user", content: userPrompt || "" },
         { headers: { "x-user-id": userId } }
       );
       userMsgSaved = true;
@@ -57,11 +86,13 @@ export const handlePrompt = async (req, res) => {
 
     // ─── 3. Invoke LangGraph workflow with conversation context ───
     const result = await agentGraph.invoke({
-      userPrompt,
+      userPrompt: userPrompt || "",
       conversationId,
       userId,
       chatHistory,
       agentOverride: validatedOverride,
+      attachedFile,
+      fileType,
     });
 
     // ─── 4. Check if creditCheckNode flagged insufficient credits ──
@@ -74,6 +105,12 @@ export const handlePrompt = async (req, res) => {
         creditCheckFailed: true,
       });
     }
+
+    // ─── 4.5 Check if router short-circuited (no-credit response) ──
+    // The router can produce a direct response + skipCredits flag for
+    // trivial short-circuit cases (e.g. "re-attach your file" prompts)
+    // that require no LLM work and should not cost credits.
+    const skipCredits = result.skipCredits === true;
 
     // ─── 5. Save assistant response to chat service (MongoDB) ─────
     let assistantMsgSaved = false;
@@ -104,7 +141,7 @@ export const handlePrompt = async (req, res) => {
     // ─── 6. Update Redis memory cache ─────────────────────────────
     if (userMsgSaved && assistantMsgSaved) {
       await appendMessagesToCache(conversationId, [
-        { role: "user", content: userPrompt },
+        { role: "user", content: userPrompt || "" },
         {
           role: "assistant",
           content: result.response,
@@ -117,9 +154,13 @@ export const handlePrompt = async (req, res) => {
 
     // ─── 7. Post-execution credit deduction ────────────────────────
     let remainingCredits = null;
-    const deductRes = await deductCredits(userId, result.selectedAgent);
-    if (deductRes && typeof deductRes.remainingCredits === "number") {
-      remainingCredits = deductRes.remainingCredits;
+    if (!skipCredits) {
+      const deductRes = await deductCredits(userId, result.selectedAgent);
+      if (deductRes && typeof deductRes.remainingCredits === "number") {
+        remainingCredits = deductRes.remainingCredits;
+      }
+    } else {
+      console.log(`[Controller] Skipping credit deduction for short-circuit response (agent: ${result.selectedAgent})`);
     }
 
     // ─── 8. Generate presigned URLs for immediate display ─────────
@@ -167,9 +208,10 @@ export const handlePrompt = async (req, res) => {
       ...(result.error && { warning: "Partial error occurred: " + result.error }),
     });
   } catch (error) {
-    console.error("handlePrompt error:", error);
+    console.error("[handlePrompt] FATAL — unhandled error in prompt handler:");
+    console.error(error.stack || error);
     return res.status(500).json({
-      message: "Something went wrong processing your request",
+      message: "Something went wrong processing your request. Please try again.",
     });
   }
 };

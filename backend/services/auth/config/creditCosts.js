@@ -9,6 +9,9 @@ export const CREDIT_COSTS = {
   pdf: 10,
   ppt: 10,
   image: 10,
+  // Hidden agents (triggered by file attachment, not selectable from frontend)
+  imageAnalyzer: 6,
+  pdfRag: 8,
 };
 
 /**

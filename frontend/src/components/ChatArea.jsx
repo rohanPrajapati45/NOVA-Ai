@@ -12,7 +12,7 @@ import ChatInput from "./ChatInput";
  * Manages draftMessage state (shared between MessageList's example cards
  * and ChatInput's controlled textarea) and artifacts panel toggle.
  */
-const ChatArea = ({ isArtifactsOpen, onToggleArtifacts }) => {
+const ChatArea = ({ isArtifactsOpen, onToggleArtifacts, onOpenMobileSidebar, isMobile }) => {
   const dispatch = useDispatch();
   const { activeConversationId } = useSelector((state) => state.conversation);
   const [draftMessage, setDraftMessage] = useState("");
@@ -72,6 +72,7 @@ const ChatArea = ({ isArtifactsOpen, onToggleArtifacts }) => {
       <Nav
         isArtifactsOpen={isArtifactsOpen}
         onToggleArtifacts={onToggleArtifacts}
+        onOpenMobileSidebar={onOpenMobileSidebar}
       />
       <MessageList
         activeConversationId={activeConversationId}

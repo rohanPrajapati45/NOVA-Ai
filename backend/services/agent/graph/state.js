@@ -187,6 +187,50 @@ const AgentState = Annotation.Root({
     reducer: (_, next) => next,
     default: () => false,
   }),
+
+  // ─── File Attachment Fields (Hidden Agents) ─────────────────────
+
+  /**
+   * Attached file metadata from multer (req.file).
+   * Shape: { path: string, mimetype: string, originalname: string } | null
+   * Populated by the controller when a file is uploaded with the request.
+   */
+  attachedFile: Annotation({
+    reducer: (_, next) => next,
+    default: () => null,
+  }),
+
+  /**
+   * Derived file type from attachedFile.mimetype.
+   * 'image' for image/*, 'pdf' for application/pdf, null when no file attached.
+   * Used by the router to auto-route to hidden agents (imageAnalyzer, pdfRag).
+   */
+  fileType: Annotation({
+    reducer: (_, next) => next,
+    default: () => null,
+  }),
+
+  /**
+   * Retrieved chunk text from Qdrant similarity search (PDF RAG flow).
+   * Kept separate from chatHistory so the RAG context is clearly delineated
+   * in the pdfRag agent's final prompt construction.
+   */
+  ragContext: Annotation({
+    reducer: (_, next) => next,
+    default: () => null,
+  }),
+
+  // ─── Short-Circuit Control Fields ─────────────────────────────────
+
+  /**
+   * Flag set by the router when it produces a direct, trivial response
+   * (e.g. "please re-attach your file") that requires no LLM/agent work.
+   * When true, the controller skips post-execution credit deduction.
+   */
+  skipCredits: Annotation({
+    reducer: (_, next) => next,
+    default: () => false,
+  }),
 });
 
 export default AgentState;

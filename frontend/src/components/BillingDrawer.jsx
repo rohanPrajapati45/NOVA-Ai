@@ -211,32 +211,46 @@ const BillingDrawer = ({ isOpen, onClose }) => {
 
               {/* Current Plan Summary Card */}
               <div
-                className="rounded-2xl p-5 border flex flex-col gap-4 relative overflow-hidden"
+                className="rounded-2xl p-5 border flex flex-col gap-4 relative shrink-0 transition-all shadow-sm"
                 style={{
-                  background: "linear-gradient(135deg, rgba(108, 92, 231, 0.08) 0%, rgba(108, 92, 231, 0.02) 100%)",
-                  borderColor: "var(--accent-glow)",
+                  background: "var(--bg-elevated)",
+                  borderColor: "var(--accent)",
+                  boxShadow: "0 4px 20px var(--accent-muted)",
                 }}
               >
                 <div className="flex items-center justify-between">
-                  <div>
-                    <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "var(--accent)" }}>
-                      Current Plan
-                    </span>
-                    <h3 className="text-xl font-bold mt-0.5 capitalize" style={{ color: "var(--text-primary)" }}>
-                      {currentPlanId} Plan
-                    </h3>
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                      style={{
+                        background: "var(--accent-muted)",
+                        border: "1px solid var(--accent-glow)",
+                      }}
+                    >
+                      <Zap size={20} style={{ color: "var(--accent)" }} />
+                    </div>
+                    <div>
+                      <span className="text-[11px] uppercase tracking-wider font-bold" style={{ color: "var(--accent)" }}>
+                        Current Active Plan
+                      </span>
+                      <h3 className="text-lg font-bold capitalize mt-0.5" style={{ color: "var(--text-primary)" }}>
+                        {currentPlanId} Tier
+                      </h3>
+                    </div>
                   </div>
+
                   <div
-                    className="px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider"
+                    className="px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5 shadow-xs"
                     style={{ background: "var(--accent)", color: "#FFFFFF" }}
                   >
-                    Active
+                    <Sparkles size={12} />
+                    <span>Active</span>
                   </div>
                 </div>
 
                 {/* Expiry / renewal note */}
                 {user?.planExpiresAt && currentPlanId !== "free" && (
-                  <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                  <p className="text-xs" style={{ color: "var(--text-muted)", margin: 0 }}>
                     Renews on {new Date(user.planExpiresAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                   </p>
                 )}
@@ -246,7 +260,7 @@ const BillingDrawer = ({ isOpen, onClose }) => {
                   <div className="flex items-center justify-between text-xs font-medium">
                     <span className="flex items-center gap-1.5" style={{ color: "var(--text-secondary)" }}>
                       <Coins size={14} style={{ color: "var(--accent)" }} />
-                      Credits Available
+                      Credits Remaining
                     </span>
                     <span style={{ color: "var(--text-primary)" }}>
                       <strong>{currentCredits}</strong> / {totalCredits} credits
@@ -254,11 +268,11 @@ const BillingDrawer = ({ isOpen, onClose }) => {
                   </div>
                   <div
                     className="w-full h-2.5 rounded-full overflow-hidden"
-                    style={{ background: "var(--border-subtle)" }}
+                    style={{ background: "var(--bg-hover)", border: "1px solid var(--border-subtle)" }}
                   >
                     <motion.div
                       className="h-full rounded-full"
-                      style={{ background: "var(--accent)" }}
+                      style={{ background: "linear-gradient(90deg, var(--accent) 0%, var(--accent-hover) 100%)" }}
                       initial={{ width: 0 }}
                       animate={{ width: `${progressPercent}%` }}
                       transition={{ duration: 0.6, ease: "easeOut" }}
@@ -280,25 +294,44 @@ const BillingDrawer = ({ isOpen, onClose }) => {
 
                 {loadingPlans ? (
                   <div className="flex flex-col gap-3">
-                    {[1, 2, 3].map((n) => (
-                      <div key={n} className="h-32 rounded-xl skeleton-shimmer" />
+                    {[120, 150, 130].map((height, n) => (
+                      <div key={n} className="rounded-2xl skeleton-shimmer" style={{ height: `${height}px` }} />
                     ))}
                   </div>
                 ) : (
                   plansData &&
                   Object.values(plansData).map((plan) => {
                     const isCurrent = plan.id === currentPlanId;
+                    const isPopular = plan.id === "pro";
                     const priceFormatted = plan.price === 0 ? "Free" : `₹${plan.price / 100}/mo`;
 
                     return (
                       <div
                         key={plan.id}
-                        className="rounded-2xl p-5 border flex flex-col gap-4 transition-all duration-200"
+                        className="rounded-2xl p-5 border flex flex-col gap-4 transition-all duration-200 relative overflow-hidden"
                         style={{
-                          background: isCurrent ? "rgba(108, 92, 231, 0.03)" : "var(--bg-card)",
-                          borderColor: isCurrent ? "var(--accent)" : "var(--border-subtle)",
+                          background: isCurrent
+                            ? "var(--accent-muted)"
+                            : isPopular
+                            ? "var(--bg-elevated)"
+                            : "var(--bg-surface)",
+                          borderColor: isCurrent
+                            ? "var(--accent)"
+                            : isPopular
+                            ? "var(--accent)"
+                            : "var(--border-subtle)",
+                          boxShadow: isPopular ? "0 4px 20px var(--accent-muted)" : "none",
                         }}
                       >
+                        {isPopular && !isCurrent && (
+                          <div
+                            className="absolute top-0 right-0 px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-bl-xl flex items-center gap-1"
+                            style={{ background: "var(--accent)", color: "#FFFFFF" }}
+                          >
+                            <Sparkles size={11} /> Popular
+                          </div>
+                        )}
+
                         <div className="flex items-start justify-between">
                           <div>
                             <div className="flex items-center gap-2">
@@ -343,9 +376,19 @@ const BillingDrawer = ({ isOpen, onClose }) => {
                           style={{
                             background: isCurrent
                               ? "var(--bg-active)"
-                              : "var(--accent)",
-                            color: isCurrent ? "var(--text-muted)" : "#FFFFFF",
-                            border: isCurrent ? "1px solid var(--border-subtle)" : "none",
+                              : isPopular
+                              ? "var(--accent)"
+                              : "var(--bg-hover)",
+                            color: isCurrent
+                              ? "var(--text-muted)"
+                              : isPopular
+                              ? "#FFFFFF"
+                              : "var(--text-primary)",
+                            border: isCurrent
+                              ? "1px solid var(--border-subtle)"
+                              : isPopular
+                              ? "none"
+                              : "1px solid var(--border-hover)",
                             opacity: isProcessing ? 0.7 : 1,
                           }}
                         >

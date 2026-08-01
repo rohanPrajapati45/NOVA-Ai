@@ -1,6 +1,21 @@
 import { ChatGroq } from "@langchain/groq";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 
+// ─── Gemini Model Selection Note ────────────────────────────────────
+// All Gemini models in this file use 'gemini-2.5-flash'.
+//
+// WHY THIS MODEL:
+//   - gemini-2.5-flash is active and verified working with valid quota
+//     on Google AI Studio.
+//   - gemini-2.0-flash returns 429 quota exceeded (limit: 0 on free tier).
+//   - gemini-2.5-flash-lite returns 404 (deprecated/unavailable for new users).
+//   - gemini-1.5-flash returns 404 (deprecated).
+//   - Multimodal support: gemini-2.5-flash supports text + image input
+//     (required for the visionModel / imageAnalyzer agent) and document RAG.
+// ─────────────────────────────────────────────────────────────────────
+
+const GEMINI_MODEL = "gemini-2.5-flash";
+
 // ─── Groq Models ────────────────────────────────────────────────────
 
 /**
@@ -36,11 +51,11 @@ export const searchModel = new ChatGroq({
 
 /**
  * PDF model — large context window for document Q&A.
- * Gemini 1.5 Flash has a 1M token context window, ideal for RAG-style PDF answering.
+ * Used by the pdf.agent.js for generating PDF report content via Gemini.
  */
 export const pdfModel = new ChatGoogleGenerativeAI({
   apiKey: process.env.GOOGLE_API_KEY,
-  model: "gemini-1.5-flash",
+  model: GEMINI_MODEL,
   temperature: 0.3,
 });
 
@@ -50,7 +65,7 @@ export const pdfModel = new ChatGoogleGenerativeAI({
  */
 export const pptModel = new ChatGoogleGenerativeAI({
   apiKey: process.env.GOOGLE_API_KEY,
-  model: "gemini-1.5-flash",
+  model: GEMINI_MODEL,
   temperature: 0.5,
 });
 
@@ -103,12 +118,40 @@ export const codingModelCall = async (messages, jsonMode = false) => {
 /**
  * PDF report content model — generates structured document content.
  * Uses Llama 3.3 70B Versatile for strong reasoning and well-organized
- * multi-section report output. Separate from pdfModel (Gemini Flash)
- * which is reserved for future RAG/Q&A over uploaded PDFs.
+ * multi-section report output. Separate from pdfModel (Gemini)
+ * which is used for RAG/Q&A over uploaded PDFs.
  */
 export const pdfReportModel = new ChatGroq({
   apiKey: process.env.GROQ_API_KEY,
   model: "llama-3.3-70b-versatile",
   temperature: 0.3,
   maxTokens: 3000,
+});
+
+// ─── Vision Model (Image Analysis) ─────────────────────────────────
+
+/**
+ * Vision model — Gemini multimodal for image understanding.
+ * Supports text + image input via multimodal HumanMessage.
+ * Used by the hidden imageAnalyzer agent (triggered by image file attachment).
+ *
+ * Model: gemini-2.5-flash — verified active with active free quota and vision support.
+ */
+export const visionModel = new ChatGoogleGenerativeAI({
+  apiKey: process.env.GOOGLE_API_KEY,
+  model: GEMINI_MODEL,
+  temperature: 0.3,
+});
+
+// ─── RAG Answer Model ──────────────────────────────────────────────
+
+/**
+ * RAG answer model — generates answers from retrieved PDF context.
+ * Uses Gemini for its large context window, ideal for ingesting
+ * multiple RAG chunks and producing a well-grounded answer.
+ */
+export const ragModel = new ChatGoogleGenerativeAI({
+  apiKey: process.env.GOOGLE_API_KEY,
+  model: GEMINI_MODEL,
+  temperature: 0.2,
 });

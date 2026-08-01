@@ -4,6 +4,7 @@ const initialState = {
   messages: [],    // [{_id, role, content, createdAt, artifactTitle, artifactFiles, searchImages}]
   loading: true,   // true while fetching history for a newly-selected conversation
   sending: false,  // true while waiting for agent response after user hits send
+  thinkingText: "Thinking...", // Dynamic thinking step label
   activeArtifact: null, // { title: string, files: [{filename, language, content}] }
   isArtifactPanelOpen: false, // Controls visibility of the panel
 };
@@ -33,11 +34,18 @@ const messageSlice = createSlice({
     },
     setSending(state, action) {
       state.sending = action.payload;
+      if (!action.payload) {
+        state.thinkingText = "Thinking..."; // Reset on completion
+      }
+    },
+    setThinkingText(state, action) {
+      state.thinkingText = action.payload;
     },
     clearMessages(state) {
       state.messages = [];
       state.loading = false;
       state.sending = false;
+      state.thinkingText = "Thinking...";
       state.activeArtifact = null;
       state.isArtifactPanelOpen = false;
     },
@@ -63,6 +71,7 @@ export const {
   addMessage,
   setMessagesLoading,
   setSending,
+  setThinkingText,
   clearMessages,
   setActiveArtifact,
   clearActiveArtifact,
