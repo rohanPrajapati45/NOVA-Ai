@@ -294,9 +294,7 @@ nova-ai/
 
 ## 👤 Author / Contact
 
-- **Author**: `[Your Name]`
-- **GitHub**: [`[GitHub Profile]`](https://github.com)
-- **LinkedIn**: [`[LinkedIn Profile]`](https://linkedin.com)
+- **Author**: `Rohan Prajapati`
 
 ---
 
