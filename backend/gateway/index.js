@@ -75,7 +75,22 @@ app.use(
   verifySession,
   createProxyWithAuth(process.env.BILLING_SERVICE || "http://localhost:8004")
 );
+// ─── Health Check Routes ───────────────────────────────────────────
 
+app.get("/", (req, res) => {
+  res.status(200).json({
+    service: "Gateway",
+    status: "Running",
+  });
+});
+
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    status: "healthy",
+    service: "gateway",
+    timestamp: new Date().toISOString(),
+  });
+});
 // ─── Start Server ───────────────────────────────────────────────────
 
 app.listen(PORT, () => {
