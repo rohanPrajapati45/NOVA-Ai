@@ -8,11 +8,11 @@ import api from "../utils/axios";
 export const getCurrentUser = async () => {
   try {
     const response = await api.get("/api/auth/me");
-    return response.data.user;
+    return response.data?.user || null;
   } catch (error) {
     if (error.response && error.response.status === 401) {
-      return null; // Unauthenticated is an expected outcome on load
+      return null; // Unauthenticated fallback
     }
-    throw error; // System or network error
+    throw error;
   }
 };

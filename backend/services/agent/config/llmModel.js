@@ -17,6 +17,10 @@ import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 const GEMINI_MODEL = "gemini-2.5-flash";
 
 // ─── Groq Models ────────────────────────────────────────────────────
+// NOTE: llama-3.1-8b-instant and llama-3.3-70b-versatile were deprecated
+// by Groq on August 16, 2026. Replaced with:
+//   - openai/gpt-oss-20b  (fast, lightweight — router/chat/search)
+//   - openai/gpt-oss-120b (heavy, complex — coding/PDF reports)
 
 /**
  * Router model — fastest/cheapest, runs on every request.
@@ -24,7 +28,7 @@ const GEMINI_MODEL = "gemini-2.5-flash";
  */
 export const routerModel = new ChatGroq({
   apiKey: process.env.GROQ_API_KEY,
-  model: "llama-3.1-8b-instant",
+  model: "openai/gpt-oss-20b",
   temperature: 0, // Deterministic classification
 });
 
@@ -33,7 +37,7 @@ export const routerModel = new ChatGroq({
  */
 export const chatModel = new ChatGroq({
   apiKey: process.env.GROQ_API_KEY,
-  model: "llama-3.1-8b-instant",
+  model: "openai/gpt-oss-20b",
   temperature: 0.7,
 });
 
@@ -43,7 +47,7 @@ export const chatModel = new ChatGroq({
  */
 export const searchModel = new ChatGroq({
   apiKey: process.env.GROQ_API_KEY,
-  model: "llama-3.1-8b-instant",
+  model: "openai/gpt-oss-20b",
   temperature: 0.5,
 });
 
@@ -83,12 +87,12 @@ export const pptModel = new ChatGoogleGenerativeAI({
 // ─── Groq Coding Model (Option A) ───────────────────────────────────
 
 /**
- * Coding model — Fast, high-quality reasoning on Groq.
- * Uses Llama 3.3 70B Versatile for high-performance code generation/review.
+ * Coding model — High-quality reasoning on Groq.
+ * Uses GPT-OSS 120B for high-performance code generation/review.
  */
 const groqCodingModel = new ChatGroq({
   apiKey: process.env.GROQ_API_KEY,
-  model: "llama-3.3-70b-versatile",
+  model: "openai/gpt-oss-120b",
   temperature: 0.2, // Lower temperature for deterministic code structure
   maxTokens: 2500,  // Standard max tokens for output size
 });
@@ -117,13 +121,13 @@ export const codingModelCall = async (messages, jsonMode = false) => {
 
 /**
  * PDF report content model — generates structured document content.
- * Uses Llama 3.3 70B Versatile for strong reasoning and well-organized
+ * Uses GPT-OSS 120B for strong reasoning and well-organized
  * multi-section report output. Separate from pdfModel (Gemini)
  * which is used for RAG/Q&A over uploaded PDFs.
  */
 export const pdfReportModel = new ChatGroq({
   apiKey: process.env.GROQ_API_KEY,
-  model: "llama-3.3-70b-versatile",
+  model: "openai/gpt-oss-120b",
   temperature: 0.3,
   maxTokens: 3000,
 });

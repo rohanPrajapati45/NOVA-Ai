@@ -29,6 +29,12 @@ app.use(
   })
 );
 
+// Cross-Origin-Opener-Policy header allowing OAuth popups
+app.use((req, res, next) => {
+  res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+  next();
+});
+
 // ─── Proxy Routes ───────────────────────────────────────────────────
 
 // Forward /api/auth/* → auth service (no session check needed — auth handles its own)

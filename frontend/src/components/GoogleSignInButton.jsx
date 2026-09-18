@@ -28,8 +28,12 @@ const GoogleSignInButton = () => {
       // 4. Store user info in Redux (only non-sensitive display data)
       dispatch(setUser(response.data.user));
     } catch (err) {
-      console.error("Google Sign-In failed:", err);
-      setError(err.message || "Sign-in failed. Please try again.");
+      console.error("Google Sign-In error:", err);
+      if (err.code === "auth/popup-closed-by-user" || err.code === "auth/cancelled-popup-request") {
+        setError(null);
+      } else {
+        setError(err.message || "Sign-in failed. Please try again.");
+      }
     } finally {
       setLoading(false);
     }

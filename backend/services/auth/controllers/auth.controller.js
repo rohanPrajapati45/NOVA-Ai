@@ -84,13 +84,13 @@ export const googleSignIn = async (req, res) => {
 export const getMe = async (req, res) => {
   try {
     if (!req.session || !req.session.userId) {
-      return res.status(401).json({ message: "Not authenticated" });
+      return res.status(200).json({ user: null });
     }
 
     const user = await User.findById(req.session.userId).select("-__v");
 
     if (!user) {
-      return res.status(401).json({ message: "User not found" });
+      return res.status(200).json({ user: null });
     }
 
     return res.status(200).json({
