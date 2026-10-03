@@ -1,6 +1,6 @@
 import { pdfReportModel } from "../config/llmModel.js";
 import { generatePdfBuffer } from "../utils/generatePdf.js";
-import { uploadToS3 } from "../../../shared/s3/uploadToS3.js";
+import { uploadToCloudinary } from "../../../shared/cloudinary/uploadToCloudinary.js";
 
 // ─── Structured Content Generation Prompt ────────────────────────────
 const SYSTEM_PROMPT = `You are a professional report-writing assistant. Given the user's request, produce a WELL-ORGANIZED document structure as a JSON object.
@@ -63,8 +63,8 @@ function parsePdfContentJson(raw) {
  * Flow:
  *   1. LLM generates structured JSON content (title, sections, bullets)
  *   2. generatePdfBuffer renders it into a formatted PDF (PDFKit)
- *   3. Upload to S3 (private bucket, returns object Key)
- *   4. Returns response text + pdfTitle + generatedPdfKey for frontend
+ *   3. Upload to Cloudinary (permanent URL, no presigning needed)
+ *   4. Returns response text + pdfTitle + generatedPdfUrl for frontend
  *
  * Error handling produces distinct, honest messages for each failure mode.
  */
@@ -109,7 +109,8 @@ export const pdfAgent = async (state) => {
         "I wasn't able to structure the report content properly. Could you rephrase your request or try again?",
       pdfContent: null,
       pdfTitle: null,
-      generatedPdfKey: null,
+      generatedPdfUrl: null,
+      generatedPdfPublicId: null,
     };
   }
 
@@ -128,33 +129,35 @@ export const pdfAgent = async (state) => {
         "I prepared the content but hit an issue formatting the PDF — could you try again?",
       pdfContent,
       pdfTitle,
-      generatedPdfKey: null,
+      generatedPdfUrl: null,
+      generatedPdfPublicId: null,
     };
   }
 
-  // ─── STEP 3: Upload to S3 ────────────────────────────────────────
-  let s3Key;
+  // ─── STEP 3: Upload to Cloudinary ────────────────────────────────
+  let uploadResult;
   try {
     // Sanitize title for filename
     const safeFilename =
       pdfTitle.replace(/[^a-zA-Z0-9\s-]/g, "").replace(/\s+/g, "-").substring(0, 60) ||
       `report-${Date.now()}`;
 
-    s3Key = await uploadToS3({
+    uploadResult = await uploadToCloudinary({
       buffer: pdfBuffer,
       filename: `${safeFilename}.pdf`,
-      contentType: "application/pdf",
+      fileType: "pdf",
     });
 
-    console.log(`[PdfAgent] PDF uploaded to S3. Key: "${s3Key}"`);
+    console.log(`[PdfAgent] PDF uploaded to Cloudinary. URL: "${uploadResult.url.substring(0, 80)}..."`);
   } catch (uploadErr) {
-    console.error("[PdfAgent] S3 upload failed (PDF was generated but couldn't be stored):", uploadErr.message);
+    console.error("[PdfAgent] Cloudinary upload failed (PDF was generated but couldn't be stored):", uploadErr.message);
     return {
       response:
         "I created the report but ran into an issue saving it — could you try again?",
       pdfContent,
       pdfTitle,
-      generatedPdfKey: null,
+      generatedPdfUrl: null,
+      generatedPdfPublicId: null,
     };
   }
 
@@ -163,6 +166,7 @@ export const pdfAgent = async (state) => {
     response: `I've put together a report on **"${pdfTitle}"** — you can view or download it below.`,
     pdfContent,
     pdfTitle,
-    generatedPdfKey: s3Key,
+    generatedPdfUrl: uploadResult.url,
+    generatedPdfPublicId: uploadResult.publicId,
   };
 };

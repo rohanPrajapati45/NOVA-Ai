@@ -1,6 +1,6 @@
 import { chatModel } from "../config/llmModel.js";
 import { generateImage } from "../config/pollinations.js";
-import { uploadToS3 } from "../../../shared/s3/uploadToS3.js";
+import { uploadToCloudinary } from "../../../shared/cloudinary/uploadToCloudinary.js";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 
 // ─── Prompt Refinement System Prompt ─────────────────────────────────
@@ -25,8 +25,8 @@ RULES:
  * Flow:
  *   1. Refine user prompt via Groq chatModel (enhancement, not generation)
  *   2. Generate image via Pollinations.ai (binary buffer)
- *   3. Upload to S3 (private bucket, returns object Key)
- *   4. Set response text + generatedImageKey for frontend display
+ *   3. Upload to Cloudinary (permanent URL, no presigning needed)
+ *   4. Set response text + generatedImageUrl/generatedImagePublicId for frontend display
  *
  * Error handling produces distinct, honest messages for each failure mode.
  */
@@ -62,32 +62,34 @@ export const imageAgent = async (state) => {
       response:
         "I wasn't able to generate that image just now — this can happen if the image service is temporarily unavailable or rate-limited. Want me to try again?",
       refinedImagePrompt: refinedPrompt,
-      generatedImageKey: null,
+      generatedImageUrl: null,
+      generatedImagePublicId: null,
     };
   }
 
-  // ─── STEP 3: Upload to S3 ─────────────────────────────────────────
-  let s3Key;
+  // ─── STEP 3: Upload to Cloudinary ─────────────────────────────────
+  let uploadResult;
   try {
     // Determine file extension from content type
     const ext = contentType.includes("png") ? "png" : "jpg";
     const filename = `${Date.now()}.${ext}`;
 
-    s3Key = await uploadToS3({
+    uploadResult = await uploadToCloudinary({
       buffer: imageBuffer,
       filename,
-      contentType,
+      fileType: "image",
     });
 
-    console.log(`[ImageAgent] Image uploaded to S3. Key: "${s3Key}"`);
+    console.log(`[ImageAgent] Image uploaded to Cloudinary. URL: "${uploadResult.url.substring(0, 80)}..."`);
   } catch (uploadErr) {
     // Distinct error: image was generated but couldn't be saved — this is an infra issue
-    console.error("[ImageAgent] S3 upload failed (image was generated but couldn't be stored):", uploadErr.message);
+    console.error("[ImageAgent] Cloudinary upload failed (image was generated but couldn't be stored):", uploadErr.message);
     return {
       response:
         "I generated the image but ran into an issue saving it — could you try again?",
       refinedImagePrompt: refinedPrompt,
-      generatedImageKey: null,
+      generatedImageUrl: null,
+      generatedImagePublicId: null,
     };
   }
 
@@ -95,6 +97,7 @@ export const imageAgent = async (state) => {
   return {
     response: `Here is the image I generated for: **"${state.userPrompt}"**`,
     refinedImagePrompt: refinedPrompt,
-    generatedImageKey: s3Key,
+    generatedImageUrl: uploadResult.url,
+    generatedImagePublicId: uploadResult.publicId,
   };
 };

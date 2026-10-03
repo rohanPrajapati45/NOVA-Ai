@@ -63,18 +63,32 @@ const messageSchema = new mongoose.Schema(
       default: [],
     },
     /**
-     * S3 object key for AI-generated images (from image agent).
-     * NOT a URL — presigned URLs are generated on-demand when messages are fetched.
+     * Permanent Cloudinary URL for AI-generated images (from image agent).
+     * Unlike the old S3 keys, these URLs never expire — no refresh needed.
      */
-    generatedImageKey: {
+    generatedImageUrl: {
       type: String,
       default: null,
     },
     /**
-     * S3 object key for AI-generated PDF reports (from PDF agent).
-     * NOT a URL — presigned URLs are generated on-demand when messages are fetched.
+     * Cloudinary public_id for the generated image (needed for cleanup on deletion).
      */
-    generatedPdfKey: {
+    generatedImagePublicId: {
+      type: String,
+      default: null,
+    },
+    /**
+     * Permanent Cloudinary URL for AI-generated PDF reports (from PDF agent).
+     * Unlike the old S3 keys, these URLs never expire — no refresh needed.
+     */
+    generatedPdfUrl: {
+      type: String,
+      default: null,
+    },
+    /**
+     * Cloudinary public_id for the generated PDF (needed for cleanup on deletion).
+     */
+    generatedPdfPublicId: {
       type: String,
       default: null,
     },
@@ -86,10 +100,17 @@ const messageSchema = new mongoose.Schema(
       default: null,
     },
     /**
-     * S3 object key for AI-generated presentations (from PPT agent).
-     * NOT a URL — presigned URLs are generated on-demand when messages are fetched.
+     * Permanent Cloudinary URL for AI-generated presentations (from PPT agent).
+     * Unlike the old S3 keys, these URLs never expire — no refresh needed.
      */
-    generatedPptKey: {
+    generatedPptUrl: {
+      type: String,
+      default: null,
+    },
+    /**
+     * Cloudinary public_id for the generated PPT (needed for cleanup on deletion).
+     */
+    generatedPptPublicId: {
       type: String,
       default: null,
     },

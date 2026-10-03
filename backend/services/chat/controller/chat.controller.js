@@ -1,8 +1,6 @@
 import mongoose from "mongoose";
 import Conversation from "../models/conversation.model.js";
 import Message from "../models/message.model.js";
-import { getSignedUrlForKey } from "../../../shared/s3/getFromS3.js";
-import { refreshFileUrlsOnMessages } from "../utils/refreshFileUrls.js";
 
 /**
  * GET /conversations
@@ -105,7 +103,7 @@ export const updateConversation = async (req, res) => {
 /**
  * DELETE /conversation/:conversationId
  * Deletes a conversation and all its messages.
- * Cascading cleanup: best-effort deletes S3 objects & Qdrant vector collection.
+ * Cascading cleanup: best-effort deletes Cloudinary assets & Qdrant vector collection.
  */
 export const deleteConversation = async (req, res) => {
   try {
@@ -129,14 +127,22 @@ export const deleteConversation = async (req, res) => {
       return res.status(403).json({ message: "Forbidden — not your conversation" });
     }
 
-    // ─── 1. Find all messages & collect S3 keys ────────────────────
+    // ─── 1. Find all messages & collect Cloudinary asset info ──────
     const messages = await Message.find({ conversationId }).lean();
 
-    const s3KeysToDelete = [];
+    // Collect {publicId, resourceType} pairs for Cloudinary cleanup.
+    // resourceType is a fixed 1:1 mapping per field name: image→'image', pdf/ppt→'raw'.
+    const cloudinaryAssetsToDelete = [];
     for (const msg of messages) {
-      if (msg.generatedImageKey) s3KeysToDelete.push(msg.generatedImageKey);
-      if (msg.generatedPdfKey) s3KeysToDelete.push(msg.generatedPdfKey);
-      if (msg.generatedPptKey) s3KeysToDelete.push(msg.generatedPptKey);
+      if (msg.generatedImagePublicId) {
+        cloudinaryAssetsToDelete.push({ publicId: msg.generatedImagePublicId, resourceType: "image" });
+      }
+      if (msg.generatedPdfPublicId) {
+        cloudinaryAssetsToDelete.push({ publicId: msg.generatedPdfPublicId, resourceType: "raw" });
+      }
+      if (msg.generatedPptPublicId) {
+        cloudinaryAssetsToDelete.push({ publicId: msg.generatedPptPublicId, resourceType: "raw" });
+      }
     }
 
     // ─── 2. Delete DB records ─────────────────────────────────────
@@ -145,20 +151,24 @@ export const deleteConversation = async (req, res) => {
 
     console.log(`[ChatController] Deleted conversation ${conversationId} and ${messages.length} messages.`);
 
-    // ─── 3. Best-effort S3 file cleanup ───────────────────────────
-    if (s3KeysToDelete.length > 0) {
+    // ─── 3. Best-effort Cloudinary asset cleanup ──────────────────
+    // Uses dynamic import so the chat service doesn't hard-depend on the
+    // Cloudinary SDK at startup (the SDK is installed in the agent service;
+    // chat service accesses it via the shared module which reads from env vars
+    // that may not be present in chat's env — so this is wrapped defensively).
+    if (cloudinaryAssetsToDelete.length > 0) {
       (async () => {
         try {
-          const { deleteFromS3 } = await import("../../../shared/s3/deleteFromS3.js");
-          for (const key of s3KeysToDelete) {
+          const { deleteFromCloudinary } = await import("../../../shared/cloudinary/deleteFromCloudinary.js");
+          for (const asset of cloudinaryAssetsToDelete) {
             try {
-              await deleteFromS3(key);
+              await deleteFromCloudinary(asset.publicId, asset.resourceType);
             } catch (err) {
-              console.warn(`[ChatController Cleanup Warning] Failed to delete S3 key ${key}:`, err.message);
+              console.warn(`[ChatController Cleanup Warning] Failed to delete Cloudinary asset ${asset.publicId}:`, err.message);
             }
           }
-        } catch (s3ImportErr) {
-          console.warn("[ChatController Cleanup Warning] S3 delete utility error:", s3ImportErr.message);
+        } catch (importErr) {
+          console.warn("[ChatController Cleanup Warning] Cloudinary delete utility error:", importErr.message);
         }
       })();
     }
@@ -192,7 +202,13 @@ export const saveMessage = async (req, res) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    const { conversationId, role, content, agentType, searchImages, artifactTitle, artifactFiles, generatedImageKey } = req.body;
+    const {
+      conversationId, role, content, agentType, searchImages,
+      artifactTitle, artifactFiles,
+      generatedImageUrl, generatedImagePublicId,
+      generatedPdfUrl, generatedPdfPublicId, pdfTitle,
+      generatedPptUrl, generatedPptPublicId, pptTitle,
+    } = req.body;
 
     // Validate required fields
     if (!conversationId) {
@@ -221,7 +237,7 @@ export const saveMessage = async (req, res) => {
       return res.status(403).json({ message: "Forbidden — not your conversation" });
     }
 
-    // Create the message — agentType, searchImages, artifact fields all optional
+    // Create the message — all optional fields spread conditionally
     const message = await Message.create({
       conversationId,
       role,
@@ -234,7 +250,14 @@ export const saveMessage = async (req, res) => {
       ...(artifactFiles && Array.isArray(artifactFiles) && artifactFiles.length > 0
         ? { artifactFiles }
         : {}),
-      ...(generatedImageKey ? { generatedImageKey } : {}),
+      ...(generatedImageUrl ? { generatedImageUrl } : {}),
+      ...(generatedImagePublicId ? { generatedImagePublicId } : {}),
+      ...(generatedPdfUrl ? { generatedPdfUrl } : {}),
+      ...(generatedPdfPublicId ? { generatedPdfPublicId } : {}),
+      ...(pdfTitle ? { pdfTitle } : {}),
+      ...(generatedPptUrl ? { generatedPptUrl } : {}),
+      ...(generatedPptPublicId ? { generatedPptPublicId } : {}),
+      ...(pptTitle ? { pptTitle } : {}),
     });
 
     // Update parent conversation's lastMessageAt
@@ -251,6 +274,11 @@ export const saveMessage = async (req, res) => {
 /**
  * GET /message/:conversationId
  * Fetch all messages for a conversation, sorted oldest-first. Validates ownership.
+ *
+ * NOTE: No URL refresh step is needed here. Cloudinary URLs stored on messages
+ * are permanent and never expire — unlike the old S3 presigned URLs which
+ * required regeneration on every fetch. This is a deliberate simplification
+ * from the S3→Cloudinary migration.
  */
 export const getMessagesByConversation = async (req, res) => {
   try {
@@ -277,13 +305,12 @@ export const getMessagesByConversation = async (req, res) => {
     }
 
     // Fetch messages sorted by createdAt ascending (natural chat order)
+    // Cloudinary URLs are permanent — messages are returned exactly as stored,
+    // with no per-fetch URL regeneration step needed.
     const messages = await Message.find({ conversationId })
       .sort({ createdAt: 1 })
       .select("-__v")
-      .lean(); // Use lean() for plain JS objects we can mutate
-
-    // Generate fresh presigned URLs for all S3-stored files (images, PDFs, PPTs)
-    await refreshFileUrlsOnMessages(messages);
+      .lean();
 
     return res.status(200).json({ messages });
   } catch (error) {

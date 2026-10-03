@@ -2,7 +2,6 @@ import { agentGraph } from "../graph/graph.js";
 import chatApi from "../utils/axios.js";
 import { getConversationHistory } from "../utils/getMessages.js";
 import { appendMessagesToCache } from "../config/memory.js";
-import { getSignedUrlForKey } from "../../../shared/s3/getFromS3.js";
 import { deductCredits } from "../utils/deductCredits.js";
 
 // Valid agent names for server-side validation of agentOverride
@@ -113,6 +112,8 @@ export const handlePrompt = async (req, res) => {
     const skipCredits = result.skipCredits === true;
 
     // ─── 5. Save assistant response to chat service (MongoDB) ─────
+    // Cloudinary URLs are permanent — no presigned URL generation needed.
+    // URLs and publicIds are sent directly from graph state to the chat service.
     let assistantMsgSaved = false;
     try {
       await chatApi.post(
@@ -125,10 +126,13 @@ export const handlePrompt = async (req, res) => {
           searchImages: result.searchResults?.images || [],
           artifactTitle: result.artifactTitle || null,
           artifactFiles: result.artifactFiles || [],
-          generatedImageKey: result.generatedImageKey || null,
-          generatedPdfKey: result.generatedPdfKey || null,
+          generatedImageUrl: result.generatedImageUrl || null,
+          generatedImagePublicId: result.generatedImagePublicId || null,
+          generatedPdfUrl: result.generatedPdfUrl || null,
+          generatedPdfPublicId: result.generatedPdfPublicId || null,
           pdfTitle: result.pdfTitle || null,
-          generatedPptKey: result.generatedPptKey || null,
+          generatedPptUrl: result.generatedPptUrl || null,
+          generatedPptPublicId: result.generatedPptPublicId || null,
           pptTitle: result.pptTitle || null,
         },
         { headers: { "x-user-id": userId } }
@@ -163,35 +167,11 @@ export const handlePrompt = async (req, res) => {
       console.log(`[Controller] Skipping credit deduction for short-circuit response (agent: ${result.selectedAgent})`);
     }
 
-    // ─── 8. Generate presigned URLs for immediate display ─────────
-    let generatedImageUrl = null;
-    if (result.generatedImageKey) {
-      try {
-        generatedImageUrl = await getSignedUrlForKey(result.generatedImageKey, 3600);
-      } catch (err) {
-        console.error("Failed to presign image key:", err.message);
-      }
-    }
-
-    let generatedPdfUrl = null;
-    if (result.generatedPdfKey) {
-      try {
-        generatedPdfUrl = await getSignedUrlForKey(result.generatedPdfKey, 3600);
-      } catch (err) {
-        console.error("Failed to presign PDF key:", err.message);
-      }
-    }
-
-    let generatedPptUrl = null;
-    if (result.generatedPptKey) {
-      try {
-        generatedPptUrl = await getSignedUrlForKey(result.generatedPptKey, 3600);
-      } catch (err) {
-        console.error("Failed to presign PPT key:", err.message);
-      }
-    }
-
-    // ─── 9. Return result to client ───────────────────────────────
+    // ─── 8. Return result to client ───────────────────────────────
+    // Cloudinary URLs are permanent and already final — no presigned URL
+    // generation step needed (this was removed during the S3→Cloudinary migration).
+    // The URL field names (generatedImageUrl, generatedPdfUrl, generatedPptUrl)
+    // match what the frontend already expects.
     return res.status(200).json({
       response: result.response,
       selectedAgent: result.selectedAgent,
@@ -200,10 +180,10 @@ export const handlePrompt = async (req, res) => {
       searchImages: result.searchResults?.images || [],
       artifactTitle: result.artifactTitle || null,
       artifactFiles: result.artifactFiles || [],
-      generatedImageUrl,
-      generatedPdfUrl,
+      generatedImageUrl: result.generatedImageUrl || null,
+      generatedPdfUrl: result.generatedPdfUrl || null,
       pdfTitle: result.pdfTitle || null,
-      generatedPptUrl,
+      generatedPptUrl: result.generatedPptUrl || null,
       pptTitle: result.pptTitle || null,
       ...(result.error && { warning: "Partial error occurred: " + result.error }),
     });

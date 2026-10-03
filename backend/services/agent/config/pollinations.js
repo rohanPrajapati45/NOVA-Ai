@@ -48,7 +48,17 @@ export const generateImage = async (prompt, options = {}) => {
 
   console.log(`[Pollinations] Generating image with model "${model}" (${width}x${height})...`);
 
-  const response = await fetch(url);
+  let response = await fetch(url);
+
+  // If key failed with 401/402 (unauthorized or unpaid), fall back to anonymous generation
+  if (!response.ok && (response.status === 401 || response.status === 402) && params.has("key")) {
+    console.warn(
+      `[Pollinations] Key failed with ${response.status}. Retrying anonymously without key...`
+    );
+    params.delete("key");
+    const fallbackUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?${params.toString()}`;
+    response = await fetch(fallbackUrl);
+  }
 
   if (!response.ok) {
     const statusText = response.statusText || "Unknown error";

@@ -1,6 +1,6 @@
 import { pdfReportModel } from "../config/llmModel.js";
 import { generatePptBuffer } from "../utils/generatePpt.js";
-import { uploadToS3 } from "../../../shared/s3/uploadToS3.js";
+import { uploadToCloudinary } from "../../../shared/cloudinary/uploadToCloudinary.js";
 
 // Reuse pdfReportModel (same Groq llama-3.3-70b-versatile, temp 0.3, 3000 tokens)
 // — identical config works well for both structured PDF and PPT content generation.
@@ -64,8 +64,8 @@ function parsePptContentJson(raw) {
  * Flow:
  *   1. LLM generates structured JSON content (title, slides with headings/bullets)
  *   2. generatePptBuffer renders it into a formatted .pptx (pptxgenjs)
- *   3. Upload to S3 (private bucket, returns object Key)
- *   4. Returns response text + pptTitle + generatedPptKey for frontend
+ *   3. Upload to Cloudinary (permanent URL, no presigning needed)
+ *   4. Returns response text + pptTitle + generatedPptUrl for frontend
  *
  * Error handling produces distinct, honest messages for each failure mode
  * (matching pdf.agent.js's pattern).
@@ -111,7 +111,8 @@ export const pptAgent = async (state) => {
         "I wasn't able to structure the presentation content properly. Could you rephrase your request or try again?",
       pptContent: null,
       pptTitle: null,
-      generatedPptKey: null,
+      generatedPptUrl: null,
+      generatedPptPublicId: null,
     };
   }
 
@@ -130,33 +131,34 @@ export const pptAgent = async (state) => {
         "I prepared the content but hit an issue formatting the presentation — could you try again?",
       pptContent,
       pptTitle,
-      generatedPptKey: null,
+      generatedPptUrl: null,
+      generatedPptPublicId: null,
     };
   }
 
-  // ─── STEP 3: Upload to S3 ────────────────────────────────────────
-  let s3Key;
+  // ─── STEP 3: Upload to Cloudinary ────────────────────────────────
+  let uploadResult;
   try {
     const safeFilename =
       pptTitle.replace(/[^a-zA-Z0-9\s-]/g, "").replace(/\s+/g, "-").substring(0, 60) ||
       `presentation-${Date.now()}`;
 
-    s3Key = await uploadToS3({
+    uploadResult = await uploadToCloudinary({
       buffer: pptBuffer,
       filename: `${safeFilename}.pptx`,
-      contentType:
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      fileType: "ppt",
     });
 
-    console.log(`[PptAgent] PPTX uploaded to S3. Key: "${s3Key}"`);
+    console.log(`[PptAgent] PPTX uploaded to Cloudinary. URL: "${uploadResult.url.substring(0, 80)}..."`);
   } catch (uploadErr) {
-    console.error("[PptAgent] S3 upload failed (PPTX was generated but couldn't be stored):", uploadErr.message);
+    console.error("[PptAgent] Cloudinary upload failed (PPTX was generated but couldn't be stored):", uploadErr.message);
     return {
       response:
         "I created the presentation but ran into an issue saving it — could you try again?",
       pptContent,
       pptTitle,
-      generatedPptKey: null,
+      generatedPptUrl: null,
+      generatedPptPublicId: null,
     };
   }
 
@@ -165,6 +167,7 @@ export const pptAgent = async (state) => {
     response: `I've put together a presentation on **"${pptTitle}"** — you can download it below.`,
     pptContent,
     pptTitle,
-    generatedPptKey: s3Key,
+    generatedPptUrl: uploadResult.url,
+    generatedPptPublicId: uploadResult.publicId,
   };
 };

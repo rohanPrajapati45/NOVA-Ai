@@ -128,8 +128,14 @@ const AgentState = Annotation.Root({
     default: () => null,
   }),
 
-  /** S3 object key for generated image (NOT a URL — presigned URLs generated on-demand) */
-  generatedImageKey: Annotation({
+  /** Permanent Cloudinary URL for the generated image (no expiry, no refresh needed) */
+  generatedImageUrl: Annotation({
+    reducer: (_, next) => next,
+    default: () => null,
+  }),
+
+  /** Cloudinary public_id for the generated image (needed for deletion) */
+  generatedImagePublicId: Annotation({
     reducer: (_, next) => next,
     default: () => null,
   }),
@@ -145,8 +151,14 @@ const AgentState = Annotation.Root({
     default: () => null,
   }),
 
-  /** S3 object key for generated PDF (NOT a URL — presigned URLs generated on-demand) */
-  generatedPdfKey: Annotation({
+  /** Permanent Cloudinary URL for the generated PDF (no expiry, no refresh needed) */
+  generatedPdfUrl: Annotation({
+    reducer: (_, next) => next,
+    default: () => null,
+  }),
+
+  /** Cloudinary public_id for the generated PDF (needed for deletion) */
+  generatedPdfPublicId: Annotation({
     reducer: (_, next) => next,
     default: () => null,
   }),
@@ -168,8 +180,14 @@ const AgentState = Annotation.Root({
     default: () => null,
   }),
 
-  /** S3 object key for generated PPT (NOT a URL — presigned URLs generated on-demand) */
-  generatedPptKey: Annotation({
+  /** Permanent Cloudinary URL for the generated PPT (no expiry, no refresh needed) */
+  generatedPptUrl: Annotation({
+    reducer: (_, next) => next,
+    default: () => null,
+  }),
+
+  /** Cloudinary public_id for the generated PPT (needed for deletion) */
+  generatedPptPublicId: Annotation({
     reducer: (_, next) => next,
     default: () => null,
   }),
