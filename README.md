@@ -15,14 +15,17 @@ Nova AI is a full-stack, distributed conversational intelligence platform engine
 ## ✨ Features
 
 ### 🔐 Authentication & Session Management
+
 - **Firebase Google Sign-In**: Streamlined authentication flow with Google OAuth via Firebase Authentication.
 - **Redis-Backed 7-Day Sessions**: High-speed, stateful session verification at the API Gateway level with automatic expiration.
 - **Secure Microservice Propagation**: Gateway enforces authentication and injects verified user identity and internal service secrets (`x-internal-secret`) into downstream service calls, preventing direct unauthorized access.
 
 ### 🤖 Multi-Agent AI System (8 Specialized Agents)
+
 Orchestrated via a centralized LangGraph state machine with intelligent intent classification:
 
 #### Visible User-Selectable Agents:
+
 - **Chat Agent**: Conversational general assistant powered by Groq and Google Gemini with Redis-cached short-term memory and MongoDB conversation persistence.
 - **Search Agent**: Real-time web intelligence powered by the Tavily Search API, delivering synthesized answers complete with inline source citations and related imagery.
 - **Coding Agent**: Generates production-ready HTML, CSS, and JavaScript solutions powered by Groq and OpenRouter (DeepSeek), rendered immediately in a live-preview Monaco Editor sandbox.
@@ -31,20 +34,24 @@ Orchestrated via a centralized LangGraph state machine with intelligent intent c
 - **Image Generation Agent**: High-resolution image synthesis using Pollinations.ai with automated prompt enhancement.
 
 #### Hidden Auto-Routed Agents:
+
 - **Image Analyzer Agent**: Triggered automatically when an image is uploaded; performs multi-modal scene analysis, text extraction (OCR), and visual comprehension via Google Gemini Vision.
 - **PDF RAG Agent**: Triggered automatically upon document attachment; chunks text, generates vector embeddings, and performs similarity searches against Qdrant Vector DB to answer queries grounded strictly in document context.
 
 ### 💳 Credit & Billing Governance
+
 - **Razorpay Payment Integration**: Integrated checkout for purchasing credit packs with webhook/signature verification.
 - **Atomic Credit Deduction**: Balances are validated and atomically decremented per query before executing compute-heavy agent workflows.
 - **Transaction History**: Audit logs for purchases and credit usage tracked in MongoDB.
 
 ### 📁 Document Handling & Vector RAG
+
 - **Vector Embedding Pipeline**: Chunks uploaded documents and indexes embeddings in Qdrant for semantic search and retrieval-augmented generation.
 - **Storage Layer (In Migration)**: Architecture designed for presigned URL asset delivery and isolated file processing (migrating from AWS S3 to Cloudflare R2 or Cloudinary).
 - **Cascading Cleanup**: Complete conversation deletion cascades across MongoDB chat collections, Redis memory keys, and Qdrant vector points.
 
 ### 🎨 Frontend UX & Workspace
+
 - **Interactive Split-Screen**: Dual-pane workspace featuring chat on the left and a live-preview code artifact panel (powered by Monaco Editor) on the right.
 - **Theme Engine**: Seamless dark and light themes with automatic system preference detection.
 - **Hands-Free Voice Input**: Speech-to-text integration using the native browser Web Speech API.
@@ -54,17 +61,17 @@ Orchestrated via a centralized LangGraph state machine with intelligent intent c
 
 ## 🛠️ Tech Stack
 
-| Domain | Technologies |
-| :--- | :--- |
-| **Frontend** | React (Vite), Redux Toolkit, Tailwind CSS, Monaco Editor, Lucide Icons, Web Speech API |
-| **Backend Framework** | Node.js, Express.js (Microservices Architecture) |
-| **AI & Agent Orchestration** | LangGraph, LangChain, Groq, Google Gemini (Flash & Vision), OpenRouter (DeepSeek), Tavily API, Pollinations.ai |
-| **Vector Database** | Qdrant Cloud Vector DB |
-| **Databases & Caching** | MongoDB (Mongoose), Redis (ioredis) |
-| **Payments** | Razorpay Node SDK |
-| **Object Storage** *(Migrating)* | **In active transition**: Migrating off decommissioned AWS S3 to Cloudflare R2 or Cloudinary (evaluation in progress) |
-| **DevOps & Containers** | Docker (5 service Dockerfiles built with shared root context), Docker Compose |
-| **Deployment Platform** *(Pending)* | **Undecided / Under evaluation**: Prior AWS deployment (ECS, ECR, ElastiCache, NAT Gateway) fully decommissioned; alternative hosting platform currently being finalized |
+| Domain                              | Technologies                                                                                                                                                             |
+| :---------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Frontend**                        | React (Vite), Redux Toolkit, Tailwind CSS, Monaco Editor, Lucide Icons, Web Speech API                                                                                   |
+| **Backend Framework**               | Node.js, Express.js (Microservices Architecture)                                                                                                                         |
+| **AI & Agent Orchestration**        | LangGraph, LangChain, Groq, Google Gemini (Flash & Vision), OpenRouter (DeepSeek), Tavily API, Pollinations.ai                                                           |
+| **Vector Database**                 | Qdrant Cloud Vector DB                                                                                                                                                   |
+| **Databases & Caching**             | MongoDB (Mongoose), Redis (ioredis)                                                                                                                                      |
+| **Payments**                        | Razorpay Node SDK                                                                                                                                                        |
+| **Object Storage** _(Migrating)_    | **In active transition**: Migrating off decommissioned AWS S3 to Cloudflare R2 or Cloudinary (evaluation in progress)                                                    |
+| **DevOps & Containers**             | Docker (5 service Dockerfiles built with shared root context), Docker Compose                                                                                            |
+| **Deployment Platform** _(Pending)_ | **Undecided / Under evaluation**: Prior AWS deployment (ECS, ECR, ElastiCache, NAT Gateway) fully decommissioned; alternative hosting platform currently being finalized |
 
 ---
 
@@ -119,6 +126,7 @@ Nova AI employs an isolated microservices architecture fronted by a reverse-prox
 ```
 
 ### Request Lifecycle
+
 1. **Client Request**: Frontend issues API requests with HTTP-only credentials to the **API Gateway** (`:8000`).
 2. **Session Verification**: Gateway executes `verifySession` against **Redis**, injecting sanitized user headers and an internal shared secret.
 3. **Microservice Routing**:
@@ -132,12 +140,14 @@ Nova AI employs an isolated microservices architecture fronted by a reverse-prox
 ## ⚙️ Getting Started / Local Setup
 
 ### Prerequisites
+
 - **Node.js**: `v20.x` or higher
 - **npm**: `v10.x` or higher
 - **Docker & Docker Compose**: For local Redis and container builds
 - **MongoDB**: Local MongoDB instance or MongoDB Atlas connection URI
 
 ### 1. Clone the Repository
+
 ```bash
 git clone https://github.com/rohanPrajapati45/NOVA-Ai.git
 cd NOVA-Ai
@@ -148,6 +158,7 @@ cd NOVA-Ai
 Create a `.env` file in each respective directory based on the variable templates below (names only):
 
 #### `backend/gateway/.env`
+
 ```env
 PORT=8000
 AUTH_SERVICE=http://localhost:8001
@@ -160,6 +171,7 @@ SESSION_SECRET=your_session_secret_key
 ```
 
 #### `backend/services/auth/.env`
+
 ```env
 PORT=8001
 MONGODB_URI=your_mongodb_connection_string
@@ -173,6 +185,7 @@ INTERNAL_SERVICE_SECRET=your_internal_service_secret
 ```
 
 #### `backend/services/chat/.env`
+
 ```env
 PORT=8002
 MONGODB_URI=your_mongodb_connection_string
@@ -185,6 +198,7 @@ AWS_BUCKET_NAME=your_bucket_name
 ```
 
 #### `backend/services/agent/.env`
+
 ```env
 PORT=8003
 REDIS_URL=redis://localhost:6379
@@ -211,6 +225,7 @@ AWS_BUCKET_NAME=your_bucket_name
 ```
 
 #### `backend/services/billing/.env`
+
 ```env
 PORT=8004
 MONGODB_URI=your_mongodb_connection_string
@@ -221,6 +236,7 @@ INTERNAL_SERVICE_SECRET=your_internal_service_secret
 ```
 
 #### `frontend/.env`
+
 ```env
 VITE_SERVER_URL=http://localhost:8000
 VITE_FIREBASE_API_KEY=your_firebase_api_key
@@ -241,12 +257,14 @@ VITE_RAZORPAY_KEY_ID=your_razorpay_key_id
 #### Option A: Running Services Manually
 
 1. **Spin up Redis** via Docker Compose:
+
    ```bash
    cd backend
    docker-compose up -d redis
    ```
 
 2. **Start Backend Microservices** (run `npm install` and `npm run dev` in separate terminals):
+
    ```bash
    # Terminal 1: API Gateway
    cd backend/gateway && npm install && npm run dev
@@ -292,6 +310,7 @@ docker build -t nova-billing -f services/billing/Dockerfile .
 The development of Nova AI spans ~33 structured implementation phases, delivering a fully operational local microservices system.
 
 ### ✅ Completed Milestones
+
 - **Microservices Core**: API Gateway with secure reverse-proxying, session validation, and internal service secret authentication.
 - **Authentication System**: Google Sign-In via Firebase Auth with Redis-backed 7-day session lifetimes.
 - **LangGraph Multi-Agent Architecture**: Intelligent router coordinating 6 user-facing agents (Chat, Tavily Web Search, Monaco Coding, PDFKit, pptxgenjs, Pollinations.ai Image Generation).
@@ -301,6 +320,7 @@ The development of Nova AI spans ~33 structured implementation phases, deliverin
 - **Containerization**: Standalone Dockerfiles for all 5 backend microservices with shared-root dependency resolution.
 
 ### 🚧 In Progress
+
 - **Storage Layer Migration**: Replacing decommissioned AWS S3 with an alternative object storage solution (Cloudflare R2 or Cloudinary — adapter selection in progress).
 - **Cloud Redeployment**: Finalizing hosting platform selection and deployment configuration for backend microservices and frontend client following the teardown of the initial AWS environment.
 
